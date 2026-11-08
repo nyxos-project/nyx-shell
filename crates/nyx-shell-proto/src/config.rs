@@ -233,7 +233,9 @@ mod tests {
         let (c, e) = read(include_str!("../../../data/shell.toml"));
         assert!(e.is_empty(), "{e:?}");
         assert!(c.shortcuts.is_empty(), "NyxOS's Hyprland config owns the keys");
-        assert_eq!(c.ipc, IpcConfig::default());
+        // Packages rewrite ui_runtimes to their Quickshell (nyx-packages does).
+        assert_eq!(c.ipc.max_queue, IpcConfig::default().max_queue);
+        assert!(!c.ipc.ui_runtimes.is_empty() && c.ipc.ui_runtimes.iter().all(|p| p.starts_with('/')));
         assert_eq!(c.focus, FocusConfig::default());
     }
 
