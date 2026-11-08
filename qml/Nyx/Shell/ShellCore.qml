@@ -6,6 +6,8 @@ import Quickshell.Io
 // The connection to Nyx Shell Core (docs/PROTOCOL.md): one socket per Quickshell
 // process, the six topics subscribed, state kept current from snapshots and deltas,
 // reconnecting with backoff. Surfaces bind to `desktop`, `overlays`, `theme`, `config`.
+// Each attempt uses a new Socket: some Quickshell versions don't connect a Socket
+// again after a refused attempt.
 Singleton {
     id: root
 
@@ -20,7 +22,8 @@ Singleton {
 
     // True once connected and every snapshot has arrived.
     property bool ready: false
-    readonly property bool connected: sock.connected
+    property var sock: null
+    readonly property bool connected: sock !== null && sock.connected
     property string lastError: ""
     property var hello: null
     property var session: null
@@ -43,7 +46,8 @@ Singleton {
     property int _waiting: 0
 
     function request(op, body, callback) {
-        if (!sock.connected) {
+        const sock = root.sock;
+        if (!sock || !sock.connected) {
             if (callback)
                 callback(null, { code: "unavailable", msg: "not connected to Nyx Shell Core" });
             return;
@@ -250,40 +254,66 @@ Singleton {
         root._since = {};
     }
 
-    Socket {
-        id: sock
-        path: root.socketPath
-        connected: root.socketPath !== ""
-        parser: SplitParser {
-            splitMarker: "\n"
-            onRead: data => {
-                let m;
-                try {
-                    m = JSON.parse(data);
-                } catch (e) {
-                    root.lastError = "unreadable line from Nyx Shell Core";
-                    return;
-                }
-                if (m.ev !== undefined)
-                    root._event(m);
-                else
-                    root._reply(m);
-            }
+    function _connect() {
+        if (root.sock) {
+            const old = root.sock;
+            root.sock = null;
+            old.destroy();
         }
-        onConnectionStateChanged: {
-            if (connected) {
-                root._backoff = 250;
-                root.lastError = "";
-                root.request("Hello", { client: root.clientName, min: 1, max: 1 }, ok => root.hello = ok);
-                root._subscribe();
-            } else {
-                root._reset();
+        if (root.socketPath === "")
+            return;
+        // Assigned before connecting, so a refusal reported at once isn't ignored.
+        const s = socketComponent.createObject(root);
+        root.sock = s;
+        s.connected = true;
+    }
+
+    function _line(data) {
+        let m;
+        try {
+            m = JSON.parse(data);
+        } catch (e) {
+            root.lastError = "unreadable line from Nyx Shell Core";
+            return;
+        }
+        if (m.ev !== undefined)
+            root._event(m);
+        else
+            root._reply(m);
+    }
+
+    Component {
+        id: socketComponent
+        Socket {
+            id: socket
+            path: root.socketPath
+            connected: false
+            parser: SplitParser {
+                splitMarker: "\n"
+                onRead: data => {
+                    if (socket === root.sock)
+                        root._line(data);
+                }
+            }
+            onConnectionStateChanged: {
+                if (socket !== root.sock)
+                    return;
+                if (connected) {
+                    root._backoff = 250;
+                    root.lastError = "";
+                    root.request("Hello", { client: root.clientName, min: 1, max: 1 }, ok => root.hello = ok);
+                    root._subscribe();
+                } else {
+                    root._reset();
+                    retry.restart();
+                }
+            }
+            onError: error => {
+                if (socket !== root.sock)
+                    return;
+                root.lastError = "can't reach Nyx Shell Core at " + root.socketPath;
                 retry.restart();
             }
-        }
-        onError: error => {
-            root.lastError = "can't reach Nyx Shell Core at " + root.socketPath;
-            retry.restart();
         }
     }
 
@@ -292,8 +322,9 @@ Singleton {
         interval: root._backoff
         onTriggered: {
             root._backoff = Math.min(root._backoff * 2, 5000);
-            sock.connected = false;
-            sock.connected = true;
+            root._connect();
         }
     }
+
+    Component.onCompleted: _connect()
 }

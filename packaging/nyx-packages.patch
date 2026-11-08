@@ -1,5 +1,5 @@
 diff --git c/flake.lock i/flake.lock
-index f3b1a8d..204501f 100644
+index f3b1a8d..4283a52 100644
 --- c/flake.lock
 +++ i/flake.lock
 @@ -800,6 +800,22 @@
@@ -9,11 +9,11 @@ index f3b1a8d..204501f 100644
 +    "nyx-shell": {
 +      "flake": false,
 +      "locked": {
-+        "lastModified": 1794114068,
-+        "narHash": "sha256-vTCNAQcvgDncrXawH+lfuII2WC/Q+ago775xdY6Y7mY=",
++        "lastModified": 1794115659,
++        "narHash": "sha256-YlbMU+zQa77FqSKJxUz72Rg8AjUAT3RjIWHw1T9ZmNU=",
 +        "owner": "nyxos-project",
 +        "repo": "nyx-shell",
-+        "rev": "06fe19344668fc39e8e32356d1f3179504caa0ce",
++        "rev": "c7fd1210179c9051f75fdf38facd1e3fc1d196ec",
 +        "type": "github"
 +      },
 +      "original": {
