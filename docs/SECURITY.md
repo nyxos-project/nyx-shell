@@ -101,8 +101,7 @@ allows titles in debug logs for local troubleshooting only.
 - **The lock is seen through logind's `LockedHint`**, which Nyx Locker sets once the
   session lock holds and clears on unlock (nyx-greeter `ab65ecd`; before it, nothing set
   it and Shell Core's lock rules didn't engage). Hyprland has no lock event. If the
-  locker dies and NyxOS's `nyx-lock` falls back to hyprlock, the hint stays set after
-  hyprlock unlocks, until the next lock: overlays stay hidden, which errs on the safe
-  side. Even without the hint nothing gets past the lock: nothing is drawn or typed
-  above an ext-session-lock surface, and Shell Core has no unlock operation. On Omarchy
-  the shell's own lock doesn't set the hint.
+  locker dies, NyxOS's `nyx-lock` falls back to hyprlock and clears the hint once
+  hyprlock has unlocked (nyxos `e0690d3`). Even without the hint nothing gets past the
+  lock: nothing is drawn or typed above an ext-session-lock surface, and Shell Core has
+  no unlock operation. On Omarchy the shell's own lock doesn't set the hint.
