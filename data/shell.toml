@@ -29,7 +29,7 @@ include_virtual = false
 # restore_focus = true
 
 # Keys for actions, written to ~/.config/hypr/nyx-shell.lua by
-# `nyx-shellctl shortcuts --apply`. None by default: NyxOS's Hyprland config already
-# binds Super+D, Super+N and Super+Space, and one key has one owner.
+# `nyx-shellctl shortcuts --apply`. None by default: keys NyxOS's Hyprland config binds
+# (Super+Space for Glimpse) stay owned there, and one key has one owner.
 [shortcuts]
 # "shell.control-center.toggle" = "SUPER + D"

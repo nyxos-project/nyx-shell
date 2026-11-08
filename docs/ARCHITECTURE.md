@@ -151,6 +151,12 @@ isn't locked, no other window has been focused since (the user's choice wins), a
 restore happened in the last 500 ms. That last rule makes focus loops impossible. In
 read-only mode nothing is dispatched.
 
+Measured in the NyxOS VM: a layer surface taking the keyboard doesn't change Hyprland's
+active window, and while an exclusive surface holds the keyboard Hyprland refuses focus
+changes. When it closes, Hyprland gives the keyboard back to the active window itself,
+so Shell Core dispatches nothing. Restoration acts only when the active window was lost
+meanwhile (with on-demand overlays a click can move it).
+
 ### Actions and shortcuts
 
 Actions have fixed ids. Built-in routes:

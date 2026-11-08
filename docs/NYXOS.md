@@ -21,6 +21,17 @@ is installed but not started: with no components in it, it would cost Quickshell
 
 ## Switching it on
 
+The changes to nyx-packages and nyxos are in `packaging/` as patches against their
+heads of 2026-11-07, kept out of those repositories while other work was in flight
+there:
+
+```sh
+git -C ~/Projects/nyx-packages apply ~/Projects/nyx-shell/packaging/nyx-packages.patch
+git -C ~/Projects/nyxos apply ~/Projects/nyx-shell/packaging/nyxos.patch
+# nyx-packages gains the nyx-shell input: lock it (in the VM: scripts/dev-vm packages flake lock),
+# then nyxos takes the new nyx-packages (nix flake update nyx-packages) before it can use nyx.shell.
+```
+
 The NixOS module (nyx-packages `modules/nixos/default.nix`) gets an app entry:
 
 ```nix
@@ -59,8 +70,8 @@ if nyx_shell then
 end
 ```
 
-NyxOS ships no `[shortcuts]`: Super+D, Super+N and Super+Space stay bound in
-`hyprland.nix`, so no key has two owners. When a component moves to Shell Core, its
+NyxOS ships no `[shortcuts]`: the keys `hyprland.nix` binds (Super+Space for Glimpse)
+stay owned there, so no key has two owners. When a component moves to Shell Core, its
 key moves into `[shortcuts]` and out of `hyprland.nix` in the same change.
 
 ## Session order
@@ -98,7 +109,37 @@ startup and shutdown, live state against Hyprland, hotplug, the `Panel1` bus nam
 theme events, the Quickshell runtime connecting, registering, reconnecting after a
 Shell Core restart, overlay policy between a transient and a passive overlay.
 
-To run in the NyxOS VM (`nyxos/scripts/dev-vm`), where Shell Core may act:
+Done in the NyxOS VM (2026-11-07, `rebuild test` from `packaging/*.patch` with
+`nyx.shell.enable` on the dev host, Quickshell 0.3.0 from nixpkgs):
+
+- The package builds and its 86 tests pass in the Nix sandbox.
+- `nyx-shell-core.service` reaches `active` through `READY=1` (4.9 MB); the GTK panels'
+  bus names show them `ready`.
+- Theme from Theme Engine 2.0's snapshot (`source: theme-engine`, the engine's
+  generation, Nyx Dark's colours in the inspector).
+- Actions: Control Center and Notification Center open and close over `Panel1`, the
+  window overview opens over the switcher's socket.
+- Overlay exclusion both ways: the Control Center opening closes the inspector; the
+  inspector opening makes the Control Center close itself.
+- Focus: nothing dispatched when Hyprland gives the keyboard back itself (above).
+- The monitor hook: a runtime scale change (1.0 → 1.25 → 1.0) reaches Shell Core.
+- Hotplug of a headless output.
+- `kill -9` of the core: systemd restarts it. Six kills in a minute: `start-limit-hit`,
+  and the GTK panels keep answering. `kill -9` of Quickshell: restarted, components
+  `ready` again.
+- Found and fixed there: Quickshell 0.3.0 didn't connect a `Socket` again after a refused
+  attempt, so the runtime stayed disconnected after a core crash; `ShellCore` now makes
+  a new socket for each attempt. Checked again after the fix: two `kill -9`s of the core,
+  components `ready` again each time without touching Quickshell.
+- Shortcuts: `SUPER + ALT + I` written, bound (`Nyx Shell: shell.inspector.toggle`) and
+  working; `SUPER + SPACE` refused as Glimpse's, nothing written.
+- Security: root (which file permissions don't stop) refused by the uid check and
+  logged; `nobody` stopped by the 0700 folder; an unrecognized program of the same user
+  (`nc`) refused `ShowOverlay`, `InvokeAction` and `UpdateShellConfig` (`forbidden`).
+- Found there, not fixed (outside this handoff): Nyx Locker doesn't set logind's
+  `LockedHint`, so Shell Core doesn't see the lock (SECURITY.md, known limits).
+
+The full list, for a run of its own (`nyxos/scripts/dev-vm`), where Shell Core may act:
 
 | Check | How | Expect |
 | --- | --- | --- |

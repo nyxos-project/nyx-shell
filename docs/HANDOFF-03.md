@@ -49,6 +49,8 @@ implement its own mutual exclusion.
 - **Titles are untrusted**: `textFormat: Text.PlainText` everywhere.
 - **Register on `reconnected`**, not once: Shell Core restarts and the runtime keeps
   going.
+- **Hyprland gives the keyboard back** when a layer surface closes; overlays don't need
+  to manage focus themselves (ARCHITECTURE.md, Focus).
 - **Hyprland doesn't report runtime monitor changes** on its event socket; the NyxOS
   hook covers Shell Core. Components that keep their own watcher until they move keep
   that bug.
