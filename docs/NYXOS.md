@@ -136,8 +136,9 @@ Done in the NyxOS VM (2026-11-07, `rebuild test` from `packaging/*.patch` with
 - Security: root (which file permissions don't stop) refused by the uid check and
   logged; `nobody` stopped by the 0700 folder; an unrecognized program of the same user
   (`nc`) refused `ShowOverlay`, `InvokeAction` and `UpdateShellConfig` (`forbidden`).
-- Found there, not fixed (outside this handoff): Nyx Locker doesn't set logind's
-  `LockedHint`, so Shell Core doesn't see the lock (SECURITY.md, known limits).
+- Found there: Nyx Locker didn't set logind's `LockedHint`, so Shell Core couldn't see
+  the lock. Fixed in nyx-greeter `ab65ecd`; Shell Core also had to watch the session's
+  own path, not `session/auto`, to hear the change.
 
 The full list, for a run of its own (`nyxos/scripts/dev-vm`), where Shell Core may act:
 

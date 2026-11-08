@@ -139,7 +139,23 @@ async fn watch_lock(tx: mpsc::UnboundedSender<Msg>) {
         tracing::warn!("no system bus: the lock state isn't followed");
         return;
     };
-    let proxy = zbus::Proxy::new(&system, "org.freedesktop.login1", "/org/freedesktop/login1/session/auto", "org.freedesktop.login1.Session").await;
+    // `session/auto` names this user's session for calls, but logind announces property
+    // changes on the session's own path: resolve it first.
+    let path = async {
+        let auto = zbus::Proxy::new(&system, "org.freedesktop.login1", "/org/freedesktop/login1/session/auto", "org.freedesktop.login1.Session").await?;
+        let id: String = auto.get_property("Id").await?;
+        let manager = zbus::Proxy::new(&system, "org.freedesktop.login1", "/org/freedesktop/login1", "org.freedesktop.login1.Manager").await?;
+        let path: zbus::zvariant::OwnedObjectPath = manager.call("GetSession", &(id,)).await?;
+        zbus::Result::Ok(path)
+    };
+    let path = match path.await {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::warn!(error = %e, "no logind session: the lock state isn't followed");
+            return;
+        }
+    };
+    let proxy = zbus::Proxy::new(&system, "org.freedesktop.login1", path, "org.freedesktop.login1.Session").await;
     let Ok(proxy) = proxy else { return };
     match proxy.get_property::<bool>("LockedHint").await {
         Ok(l) => {

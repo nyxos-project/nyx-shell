@@ -71,8 +71,8 @@ implement its own mutual exclusion.
   `nyx-themed`. The `Theme` singleton could also move onto the engine's own
   `Nyx.Theme` QML module, which reads the same snapshot.
 - `ipc.ui_runtimes` is read at start; changing it needs a restart.
-- Nyx Locker doesn't set logind's `LockedHint` (checked in the VM: `LockedHint=no` while
-  locked), so Shell Core can't see the lock on NyxOS; Omarchy's shell lock doesn't set
-  it either. A `SetLockedHint` call in Nyx Locker fixes it (SECURITY.md, known limits).
+- Nyx Locker sets logind's `LockedHint` since nyx-greeter `ab65ecd`; nyx-packages needs
+  that revision. The hyprlock fallback in `nyx-lock` doesn't clear it after unlocking
+  (SECURITY.md, known limits).
 - Persistent overlays should be shown again by their component after a Shell Core
   restart (they register again; showing is theirs to ask).
