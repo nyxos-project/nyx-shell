@@ -12,6 +12,7 @@ ConditionEnvironment=WAYLAND_DISPLAY
 [Service]
 ExecStart=/usr/bin/qs --path %h/.local/share/nyx-shell/qml/shell.qml --no-duplicate
 Environment=QML_IMPORT_PATH=%h/.local/share/nyx-shell/qml
+Environment=QS_NO_RELOAD_POPUP=1
 Restart=on-failure
 RestartSec=2
 

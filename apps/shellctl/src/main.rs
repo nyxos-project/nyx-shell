@@ -117,6 +117,9 @@ fn parse_json(s: &str) -> Result<Value, String> {
 }
 
 fn main() -> ExitCode {
+    // Output piped into `head` ends quietly instead of panicking.
+    // SAFETY: restoring the default action of a signal, before any thread starts.
+    unsafe { libc::signal(libc::SIGPIPE, libc::SIG_DFL) };
     let args: Vec<String> = std::env::args().skip(1).collect();
     let a: Vec<&str> = args.iter().map(String::as_str).collect();
     match run(&a) {

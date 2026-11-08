@@ -182,6 +182,12 @@ policy test, not a product.
   events, Lua `hl.dsp.*`. **No compositor change is needed for this handoff.**
 - Gap to document for later: Hyprland doesn't report which layer surface holds keyboard
   focus, so focus restoration infers it from the active window.
+- Gap found while validating: socket2 sends nothing when a monitor's mode, scale or
+  position changes at runtime (`hl.monitor` through `eval`, a settings change); only the
+  Lua event `monitor.layout_changed` fires. Every `nyx-desktop` user keeps the old
+  geometry until the next monitor event. Shell Core closes it without a patch: NyxOS's
+  Hyprland config posts `custom>>nyx-shell-monitors` from that Lua event
+  (`hl.dsp.event`), and Shell Core reads the monitors again when it arrives.
 
 ### Theme (`nyx-design`, `nyx-themes`, `nyx-system/apps/themed`)
 

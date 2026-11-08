@@ -54,7 +54,7 @@ impl Harness {
     }
 
     fn desktop(&mut self, d: nyx_desktop::Desktop) {
-        self.core.handle(Msg::Desktop(Update { desktop: Arc::new(d), refresh: None }));
+        self.core.handle(Msg::Desktop(Update { desktop: Arc::new(d), monitors: None }));
     }
 }
 

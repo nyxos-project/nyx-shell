@@ -5,7 +5,7 @@
 //! reporting back with another message. Tests drive it directly.
 
 use crate::actions::{self, Environment, Route};
-use crate::compositor::{self, Update};
+use crate::compositor::{self, MonitorExtra, Update};
 use crate::config::ConfigStore;
 use crate::focus::Focus;
 use crate::overlay::{Change, Overlays, PANEL1};
@@ -24,6 +24,7 @@ use nyx_shell_proto::{
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, oneshot};
 
@@ -37,6 +38,8 @@ pub enum Msg {
     Disconnect { client: ClientId },
     Request { client: ClientId, id: u64, op: Op, reply: oneshot::Sender<Reply> },
     Desktop(Update),
+    /// Monitors read again after `monitor.layout_changed` (the NyxOS hook).
+    Monitors(HashMap<String, MonitorExtra>),
     Locked(bool),
     /// `Panel1.Opened(id)` from a GTK panel.
     PanelOpened { id: String },
@@ -95,7 +98,8 @@ pub struct Core {
     read_only: bool,
     state: SessionState,
     desktop: DesktopState,
-    refresh: HashMap<String, f64>,
+    monitors: HashMap<String, MonitorExtra>,
+    raw: Arc<nyx_desktop::Desktop>,
     last_event: Option<Instant>,
     locked: bool,
     clients: BTreeMap<ClientId, Client>,
@@ -150,7 +154,8 @@ impl Core {
             read_only: o.read_only,
             state: SessionState::Starting,
             desktop,
-            refresh: HashMap::new(),
+            monitors: HashMap::new(),
+            raw: Arc::default(),
             last_event: None,
             locked: false,
             clients: BTreeMap::new(),
@@ -203,6 +208,10 @@ impl Core {
             Msg::Disconnect { client } => self.disconnect(client),
             Msg::Request { client, id, op, reply } => self.request(client, id, op, reply),
             Msg::Desktop(u) => self.desktop_update(u),
+            Msg::Monitors(m) => {
+                self.monitors = m;
+                self.rebuild();
+            }
             Msg::Locked(l) => self.set_locked(l),
             Msg::PanelOpened { id } => {
                 if id.starts_with("nyx-shell:") {
@@ -527,11 +536,17 @@ impl Core {
     // ---------- Desktop, lock, buses ----------
 
     fn desktop_update(&mut self, u: Update) {
-        if let Some(r) = u.refresh {
-            self.refresh = r;
+        if let Some(m) = u.monitors {
+            self.monitors = m;
         }
         self.last_event = Some(Instant::now());
-        let next = normalize(&u.desktop, self.desktop.generation + 1, &self.refresh);
+        self.raw = u.desktop;
+        self.rebuild();
+    }
+
+    /// Normalize the latest compositor state again and tell clients what changed.
+    fn rebuild(&mut self) {
+        let next = normalize(&self.raw, self.desktop.generation + 1, &self.monitors);
         let delta = next.delta_from(&self.desktop);
         if delta.is_empty() {
             return;

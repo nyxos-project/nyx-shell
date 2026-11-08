@@ -788,6 +788,7 @@ dependencies = [
 name = "nyx-shellctl"
 version = "0.1.0"
 dependencies = [
+ "libc",
  "nyx-shell-proto",
  "serde",
  "serde_json",

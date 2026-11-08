@@ -92,6 +92,12 @@ pub async fn run(
             let _ = tx.send(Msg::Desktop(u));
         })
     });
+    if o.hyprland {
+        let tx = tx.clone();
+        crate::compositor::watch_monitor_hook(move |m| {
+            let _ = tx.send(Msg::Monitors(m));
+        });
+    }
     let bridge = o.dbus.then(|| {
         let (btx, brx) = mpsc::unbounded_channel();
         tokio::spawn(crate::bridge::run(tx.clone(), brx));
