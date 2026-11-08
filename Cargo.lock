@@ -707,7 +707,7 @@ dependencies = [
 [[package]]
 name = "nyx-config"
 version = "0.1.0"
-source = "git+https://github.com/nyxos-project/nyx-system.git?rev=e7c6f9a41cca0bc22c546b460734b10cafb63633#e7c6f9a41cca0bc22c546b460734b10cafb63633"
+source = "git+https://github.com/nyxos-project/nyx-system.git?rev=87461e53c2fc5fb5e045204e2a492c32c86a3f26#87461e53c2fc5fb5e045204e2a492c32c86a3f26"
 dependencies = [
  "anyhow",
  "toml",
