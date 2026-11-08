@@ -1,4 +1,5 @@
-//! D-Bus: the GTK panels' `Panel1`, their bus names, and logind's lock state.
+//! D-Bus: the GTK panels' `Panel1`, their bus names, Theme Engine 2.0's `ThemeChanged`,
+//! and logind's lock state.
 //!
 //! Optional: without a session bus the panels' actions are unavailable and nothing
 //! else changes. Every call has a short timeout so a stuck panel can't stall anything.
@@ -33,6 +34,7 @@ pub async fn run(tx: mpsc::UnboundedSender<Msg>, mut cmds: mpsc::UnboundedReceiv
     let names = watch_names(&conn, tx.clone());
     let opened = watch_opened(&conn, tx.clone());
     let lock = watch_lock(tx.clone());
+    let theme = watch_theme(&conn, tx.clone());
     let commands = async {
         while let Some(cmd) = cmds.recv().await {
             let conn = conn.clone();
@@ -40,7 +42,7 @@ pub async fn run(tx: mpsc::UnboundedSender<Msg>, mut cmds: mpsc::UnboundedReceiv
             tokio::spawn(async move { command(&conn, cmd, &tx).await });
         }
     };
-    tokio::join!(names, opened, lock, commands);
+    tokio::join!(names, opened, lock, theme, commands);
 }
 
 async fn command(conn: &Connection, cmd: BridgeCmd, tx: &mpsc::UnboundedSender<Msg>) {
@@ -111,6 +113,23 @@ async fn watch_opened(conn: &Connection, tx: mpsc::UnboundedSender<Msg>) {
         if let Ok(id) = msg.body().deserialize::<String>() {
             let _ = tx.send(Msg::PanelOpened { id });
         }
+    }
+}
+
+/// Theme Engine 2.0 announces changes as `io.github.design_nexus.nyx.Theme1.ThemeChanged`
+/// at its path, from the service or from whatever changed a choice; listen by
+/// interface and path, not by sender. The snapshot is then read again.
+async fn watch_theme(conn: &Connection, tx: mpsc::UnboundedSender<Msg>) {
+    let rule = zbus::MatchRule::builder()
+        .msg_type(zbus::message::Type::Signal)
+        .interface("io.github.design_nexus.nyx.Theme1")
+        .and_then(|b| b.member("ThemeChanged"))
+        .and_then(|b| b.path("/io/github/design_nexus/nyx/Theme"))
+        .map(|b| b.build());
+    let Ok(rule) = rule else { return };
+    let Ok(mut stream) = zbus::MessageStream::for_match_rule(rule, conn, Some(8)).await else { return };
+    while let Some(Ok(_)) = stream.next().await {
+        let _ = tx.send(Msg::ThemeFiles);
     }
 }
 

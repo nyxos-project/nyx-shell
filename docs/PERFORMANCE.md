@@ -53,18 +53,19 @@ write per subscribed client. It has no timers while every client keeps up.
 
 ## Shell Core with and without the palette
 
-The `palette` feature links `nyx-theme`, which links GTK, to put the resolved palette in
-theme events. Both builds ran at the same time on the same events (30 s):
+The opt-in `palette` feature links `nyx-theme`, which links GTK, to resolve colours
+when Theme Engine 2.0 isn't running. The default build reads the engine's snapshot and
+links no GTK. Both ran at the same time on the same events (30 s):
 
 | Build | Binary | RSS | Private + swapped | CPU | Start to `READY=1` (median of 10) |
 | --- | --- | --- | --- | --- | --- |
-| palette (default) | 6.6 MB | 15.6 MiB | 5.8 MiB | 0.40 % | 28.5 ms (max 183 ms) |
-| no palette | 6.1 MB | 7.5 MiB | 5.0 MiB | 0.37 % | 3.8 ms (max 12 ms) |
+| `palette` | 6.6 MB | 15.6 MiB | 5.8 MiB | 0.40 % | 28.5 ms (max 183 ms) |
+| default (no GTK) | 6.1 MB | 7.5 MiB | 5.0 MiB | 0.37 % | 3.8 ms (max 12 ms) |
 
 GTK costs little private memory but doubles RSS and adds about 25 ms to start-up,
 almost all of it loading shared libraries. `READY=1` is sent once the first
-compositor snapshot is in. Theme Engine 2.0 (Handoff 02) should offer tokens without
-GTK so the palette feature can go.
+compositor snapshot is in. The idle tables above were taken with the `palette` build;
+the default build is the lighter one.
 
 ## The Quickshell runtime
 

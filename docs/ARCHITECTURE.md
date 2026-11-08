@@ -196,11 +196,18 @@ user's key so the layer below shows through. The folders are watched with inotif
 
 ### Theme
 
-The adapter watches `~/.config/nyx/theme.toml`, `~/.config/nyx/themes/` and Omarchy's
-current theme folder, debounces 200 ms, and bumps `theme.generation` only when their
-contents changed. Events carry the generation, mode, theme id, light flag and (with the
-default `palette` feature) the resolved palette from `nyx_theme::suite_theme`. Theme
-parsing stays in `nyx-theme`; Theme Engine 2.0 replaces the source in Handoff 02.
+Theme Engine 2.0 (`nyx-themed`, `io.github.design_nexus.nyx.Theme1`) resolves the
+system theme once and writes an immutable snapshot,
+`$XDG_RUNTIME_DIR/nyx/theme/system.json`, then announces `ThemeChanged`. Shell Core
+listens for that signal (by interface and path, as the engine's contract asks) and
+watches the snapshot's folder, reads the snapshot (format 1) and publishes
+`ThemeChanged` to clients with its own generation, the engine's generation, the theme's
+id, name, light flag and colours by their established names. It parses no theme files.
+
+Without the engine (Omarchy today), it watches `~/.config/nyx/theme.toml`,
+`~/.config/nyx/themes/` and Omarchy's current theme folder instead; the opt-in
+`palette` feature then resolves colours with `nyx-theme`, which links GTK. Either way
+the generation moves only when the inputs' contents change.
 
 ## Process boundaries
 

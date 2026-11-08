@@ -98,5 +98,12 @@ allows titles in debug logs for local troubleshooting only.
 
 - Peer identity is read at connect time; a same-user process could in principle race a
   PID. Same-user processes are not the boundary (above).
-- On Omarchy, the shell's own lock doesn't set logind's `LockedHint`, so Shell Core can't
-  see that lock. On NyxOS the lock path does set it.
+- **Nothing sets logind's `LockedHint` yet.** Checked in the NyxOS VM: with Nyx Locker
+  on screen the session reports `LockedHint=no`, and Hyprland has no lock event. So
+  Shell Core's lock rules (hide overlays, refuse to show them, no focus restore) don't
+  engage on NyxOS today. This isn't a way past the lock: nothing is drawn or typed above
+  an ext-session-lock surface, and Shell Core has no unlock operation. The fix belongs
+  in Nyx Locker: call `org.freedesktop.login1.Session.SetLockedHint(true)` on its
+  session when the lock is held and `false` on unlock (nyx-greeter
+  `apps/locker/src/ui.rs`, around `connect_locked` and `connect_unlocked`). On Omarchy
+  the shell's own lock doesn't set it either.

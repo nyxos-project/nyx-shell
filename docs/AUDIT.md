@@ -195,10 +195,11 @@ policy test, not a product.
   choice; Follow Omarchy reads `~/.local/state/omarchy/current/theme/colors.toml`.
 - The crate always links GTK (`gtk4` is not optional).
 - No theme generation or version exists; change detection is by mtime.
-- **Integration:** Shell Core's theme adapter watches the same files once and publishes a
-  generation. The palette comes from `nyx_theme::suite_theme` behind the default
-  `palette` cargo feature (which links GTK); without the feature, events carry identity
-  only. Theme Engine 2.0 (Handoff 02) replaces the adapter's source.
+- **Theme Engine 2.0 landed while this handoff was built** (nyx-design `318a2a4`,
+  nyx-packages `9013cd1`): `nyx-themed` owns `io.github.design_nexus.nyx.Theme1`
+  (`Generation`, `ThemeChanged`) and writes the resolved theme as a snapshot,
+  `$XDG_RUNTIME_DIR/nyx/theme/system.json`. Shell Core follows that; it watches the
+  theme files itself only when the engine isn't running.
 
 ### Settings and configuration (`nyx-settings`, `nyx-system/crates/nyx-config`)
 
@@ -239,4 +240,7 @@ non-GTK daemons. Shell Core uses `tracing` and its own lock file.
   `nyx_plugin_sdk::services`, the dock's MPRIS.
 - Several Exclusive-keyboard overlays (Glimpse, Clipboard, Capture, nyx-prompt, Assistant
   HUD during approval) with no arbitration between apps.
-- The lock path differs: NyxOS emits logind `Lock`; Omarchy's shell lock doesn't.
+- Nobody sets logind's `LockedHint`: not Nyx Locker (checked in the NyxOS VM while
+  locked), not Omarchy's shell lock. Only `loginctl lock-session` emits logind's `Lock`
+  signal, and hypridle's idle path doesn't go through it. Services that follow the lock
+  through logind miss idle locks.

@@ -113,4 +113,4 @@ To run in the NyxOS VM (`nyxos/scripts/dev-vm`), where Shell Core may act:
 | Lock | lock with the keybind | every overlay hidden, `locked` in status, `ShowOverlay` refused; unlock restores |
 | Shortcuts | `[shortcuts] "shell.inspector.toggle" = "SUPER + ALT + I"`, `nyx-shellctl shortcuts --apply` | bind works; a key already bound is reported and nothing is written |
 | Security | a script as another user connects | refused; as the same user, read-only |
-| Theme | change the theme in Nyx Settings | `ThemeChanged`, surfaces restyle |
+| Theme | change the theme in Nyx Settings (or `nyx-theme set …`) | `ThemeChanged` with `source: theme-engine` and the engine's generation; surfaces restyle |

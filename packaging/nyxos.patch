@@ -1,0 +1,36 @@
+diff --git c/modules/home/hyprland.nix i/modules/home/hyprland.nix
+index 0bfda55..246f852 100644
+--- c/modules/home/hyprland.nix
++++ i/modules/home/hyprland.nix
+@@ -125,6 +125,18 @@ in
+       dofile((os.getenv("HOME") or "") .. "/.config/hypr/nyx-switcher.lua")
+     end
+   ''
++  # Nyx Shell Core: Hyprland's event socket doesn't report monitor mode, scale or
++  # position changes, so they're posted as custom>>nyx-shell-monitors; then its
++  # shortcuts, written by `nyx-shellctl shortcuts --apply` from [shortcuts].
++  + lib.optionalString osConfig.nyx.shell.enable ''
++
++    hl.on("monitor.layout_changed", function() hl.dispatch(hl.dsp.event("nyx-shell-monitors")) end)
++    local nyx_shell = io.open((os.getenv("HOME") or "") .. "/.config/hypr/nyx-shell.lua")
++    if nyx_shell then
++      nyx_shell:close()
++      dofile((os.getenv("HOME") or "") .. "/.config/hypr/nyx-shell.lua")
++    end
++  ''
+   # The user's Nyx theme (written by nyx-themed), then the values set in Nyx Settings,
+   # last so they win; Settings looks for its require line.
+   + lib.optionalString osConfig.nyx.themes.enable ''
+diff --git c/modules/nixos/apps.nix i/modules/nixos/apps.nix
+index bb6d8b4..157f5c6 100644
+--- c/modules/nixos/apps.nix
++++ i/modules/nixos/apps.nix
+@@ -36,6 +36,8 @@ in
+     dock.enable = lib.mkDefault true;
+     control-center.enable = lib.mkDefault true;
+     switcher.enable = lib.mkDefault true;
++    # Nyx Shell Core: off until components move onto it (handoff 03).
++    shell.enable = lib.mkDefault false;
+     settings.enable = lib.mkDefault true;
+     wallpapers.enable = lib.mkDefault true;
+     store.enable = lib.mkDefault true;

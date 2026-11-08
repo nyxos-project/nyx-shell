@@ -265,12 +265,17 @@ when a required dependency isn't ready), `detail`, `owner`, `since_ms`.
 - `GetThemeGeneration` [desktop.read] → `ThemeState`:
 
 ```json
-{"generation":2,"mode":"omarchy","id":"omarchy","name":"Omarchy","light":false,
- "palette":{"bg":"#1a1b26","surface":"…","text":"…","dim_text":"…","accent":"…",
-   "border":"…","muted":"…","highlight":"…","danger":"…","glow":"…","shadow":"…"}}
+{"generation":2,"mode":"theme","id":"catppuccin-mocha","name":"Catppuccin Mocha","light":false,
+ "palette":{"bg":"#1e1e2e","surface":"…","text":"…","dim_text":"…","accent":"…",
+   "border":"…","muted":"…","highlight":"…","danger":"…","glow":"…","shadow":"…", "…": "…"},
+ "source":"theme-engine","engine_generation":41}
 ```
 
-  `palette` is `null` in builds without the `palette` feature.
+  - `source`: `theme-engine` when the colours come from Theme Engine 2.0's snapshot
+    (its established colour names), `files` when the engine isn't running.
+  - `engine_generation`: the engine's own generation, with `theme-engine`.
+  - `palette` is `null` with `files` unless Shell Core was built with the `palette`
+    feature.
 - `SubscribeThemeChanges` [desktop.read] → `{seq, theme}`.
 
 ### Other

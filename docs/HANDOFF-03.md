@@ -64,10 +64,13 @@ implement its own mutual exclusion.
   move.
 - Refresh rate and runtime monitor geometry belong in `nyx-desktop`'s model; Shell Core
   reads them itself for now.
-- The `palette` feature links GTK through `nyx-theme`; Theme Engine 2.0 should give a
-  GTK-free token source and the feature can go (half the RSS, 25 ms faster start).
+- Theme events come from Theme Engine 2.0's snapshot. The opt-in `palette` feature
+  (GTK, for machines without the engine) can go once every NyxOS session runs
+  `nyx-themed`. The `Theme` singleton could also move onto the engine's own
+  `Nyx.Theme` QML module, which reads the same snapshot.
 - `ipc.ui_runtimes` is read at start; changing it needs a restart.
-- On Omarchy the shell's own lock doesn't set logind's `LockedHint`, so Shell Core
-  doesn't see it there; NyxOS's lock path does.
+- Nyx Locker doesn't set logind's `LockedHint` (checked in the VM: `LockedHint=no` while
+  locked), so Shell Core can't see the lock on NyxOS; Omarchy's shell lock doesn't set
+  it either. A `SetLockedHint` call in Nyx Locker fixes it (SECURITY.md, known limits).
 - Persistent overlays should be shown again by their component after a Shell Core
   restart (they register again; showing is theirs to ask).

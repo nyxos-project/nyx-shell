@@ -1,0 +1,130 @@
+diff --git c/flake.lock i/flake.lock
+index f3b1a8d..204501f 100644
+--- c/flake.lock
++++ i/flake.lock
+@@ -800,6 +800,22 @@
+         "type": "github"
+       }
+     },
++    "nyx-shell": {
++      "flake": false,
++      "locked": {
++        "lastModified": 1794114068,
++        "narHash": "sha256-vTCNAQcvgDncrXawH+lfuII2WC/Q+ago775xdY6Y7mY=",
++        "owner": "nyxos-project",
++        "repo": "nyx-shell",
++        "rev": "06fe19344668fc39e8e32356d1f3179504caa0ce",
++        "type": "github"
++      },
++      "original": {
++        "owner": "nyxos-project",
++        "repo": "nyx-shell",
++        "type": "github"
++      }
++    },
+     "nyx-store": {
+       "flake": false,
+       "locked": {
+@@ -994,6 +1010,7 @@
+         "nyx-reminders": "nyx-reminders",
+         "nyx-settings": "nyx-settings",
+         "nyx-share": "nyx-share",
++        "nyx-shell": "nyx-shell",
+         "nyx-store": "nyx-store",
+         "nyx-switcher": "nyx-switcher",
+         "nyx-system": "nyx-system",
+diff --git c/flake.nix i/flake.nix
+index d1c641f..d63ba98 100644
+--- c/flake.nix
++++ i/flake.nix
+@@ -233,6 +233,10 @@
+       url = "github:design-nexus/nyx-switcher";
+       flake = false;
+     };
++    nyx-shell = {
++      url = "github:nyxos-project/nyx-shell";
++      flake = false;
++    };
+     nyx-welcome = {
+       url = "github:nyxos-project/nyx-welcome";
+       flake = false;
+diff --git c/modules/nixos/default.nix i/modules/nixos/default.nix
+index 8e57a84..b9a0801 100644
+--- c/modules/nixos/default.nix
++++ i/modules/nixos/default.nix
+@@ -54,6 +54,7 @@ let
+     settings = "Nyx Settings and its root helper";
+     store = "Nyx Store, with the NyxOS catalog, nixpkgs and Flathub";
+     switcher = "Nyx Switcher, its window and app switching and the overview";
++    shell = "Nyx Shell Core (the shell's coordinator) and the Nyx.Shell Quickshell module";
+     welcome = "Nyx Welcome, the setup after installation";
+   };
+ 
+@@ -157,6 +158,12 @@ in
+         environment.systemPackages = [ nyxPkgs.nyx-icons ];
+       })
+ 
++      # Nyx Shell Core's NyxOS defaults: the distribution layer of the `shell` domain.
++      (lib.mkIf cfg.shell.enable {
++        environment.etc."nyxos/defaults/shell.toml".source =
++          "${nyxPkgs.nyx-shell}/share/nyx-shell/shell.toml";
++      })
++
+       (lib.mkIf cfg.icons.followTheme {
+         environment.systemPackages = [ iconTools ];
+ 
+diff --git c/pkgs/default.nix i/pkgs/default.nix
+index 7975897..4d75a21 100644
+--- c/pkgs/default.nix
++++ i/pkgs/default.nix
+@@ -61,6 +61,7 @@ fromSource [
+   "nyx-store"
+   "nyx-system"
+   "nyx-switcher"
++  "nyx-shell"
+   "nyx-welcome"
+   "nyx-installer"
+ ]
+diff --git c/pkgs/nyx-shell.nix i/pkgs/nyx-shell.nix
+new file mode 100644
+index 0000000..e3454e7
+--- /dev/null
++++ i/pkgs/nyx-shell.nix
+@@ -0,0 +1,37 @@
++# Nyx Shell Core (the shell's coordinator: desktop state, overlay policy, focus, actions,
++# components, settings, theme events), nyx-shellctl, the Nyx.Shell Quickshell module and
++# the nyx-shell-qs runtime. Only the core starts with the session; nyx-shell-qs waits
++# until components move into it (handoff 03).
++{
++  nyx,
++  src,
++  quickshell,
++}:
++nyx.buildApp {
++  pname = "nyx-shell";
++  inherit src;
++  postPatch = ''
++    substituteInPlace data/nyx-shell-qs.service \
++      --replace-fail '/usr/bin/qs' '${quickshell}/bin/qs' \
++      --replace-fail '%h/.local/share/nyx-shell/qml' "$out/share/nyx-shell/qml"
++    # NixOS runs Quickshell from its store folder; trust that executable as the UI runtime.
++    substituteInPlace data/shell.toml --replace-fail \
++      'ui_runtimes = ["/usr/bin/quickshell"]' \
++      'ui_runtimes = ["${quickshell}/bin/quickshell", "${quickshell}/bin/.quickshell-wrapped"]'
++  '';
++  userUnits = [
++    "data/nyx-shell-core.service"
++    "data/nyx-shell-qs.service"
++  ];
++  passthru.autostart."nyx-shell-core" = "graphical-session.target";
++  postInstall = ''
++    mkdir -p $out/share/nyx-shell
++    cp -r qml $out/share/nyx-shell/
++    install -Dm644 data/shell.toml $out/share/nyx-shell/shell.toml
++  '';
++  meta = {
++    description = "Nyx Shell Core and the Nyx.Shell Quickshell module";
++    homepage = "https://github.com/nyxos-project/nyx-shell";
++    mainProgram = "nyx-shell-core";
++  };
++}

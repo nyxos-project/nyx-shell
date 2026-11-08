@@ -46,7 +46,7 @@ fn rapid_workspace_switches() {
         watch_files: false,
         ready_timeout: Duration::from_secs(2),
         config: ConfigStore { layers: nyx_config::Layers { defaults: root.join("d"), system: root.join("s"), user: root.join("u") } },
-        theme: ThemeSource { suite_file: root.join("u/theme.toml"), themes_dir: root.join("u/themes"), omarchy_dir: root.join("o") },
+        theme: ThemeSource { suite_file: root.join("u/theme.toml"), themes_dir: root.join("u/themes"), omarchy_dir: root.join("o"), snapshot_file: root.join("r/system.json") },
         compositor: Arc::new(nyx_shell_core::compositor::Hyprland),
         trust: Some(Trust { own_dir: PathBuf::from("/nonexistent"), trusted_dirs: vec![], ui_runtimes: vec![] }),
     };

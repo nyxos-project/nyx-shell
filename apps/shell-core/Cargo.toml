@@ -12,7 +12,7 @@ name = "nyx-shell-core"
 path = "src/main.rs"
 
 [features]
-default = ["palette"]
+default = []
 palette = ["nyx-shell-core/palette"]
 
 [dependencies]

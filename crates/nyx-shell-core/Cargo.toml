@@ -8,8 +8,8 @@ authors.workspace = true
 repository.workspace = true
 
 [features]
-# Theme events carry the resolved palette from nyx-theme (which links GTK).
-default = ["palette"]
+# Without Theme Engine 2.0's snapshot, resolve the palette with nyx-theme (links GTK).
+default = []
 palette = ["dep:nyx-theme"]
 
 [dependencies]

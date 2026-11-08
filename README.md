@@ -45,8 +45,8 @@ cargo clippy --all-targets
 cargo test            # unit tests, an end-to-end test against a fake Hyprland, a burst test
 ```
 
-`--no-default-features` builds without the `palette` feature (no GTK linked; theme
-events then carry no colours).
+Theme events take their colours from Theme Engine 2.0's snapshot. `--features palette`
+also resolves them without the engine, by linking `nyx-theme` (GTK).
 
 ## Trying it without changing the desktop
 

@@ -49,6 +49,7 @@ fn end_to_end() {
         suite_file: tmp.path().join("cfg/nyx/theme.toml"),
         themes_dir: tmp.path().join("cfg/nyx/themes"),
         omarchy_dir: tmp.path().join("state/omarchy/current/theme"),
+        snapshot_file: tmp.path().join("run/nyx/theme/system.json"),
     };
     let me = std::env::current_exe().unwrap();
     let trust = Trust { own_dir: PathBuf::from("/nonexistent"), trusted_dirs: vec![], ui_runtimes: vec![me] };

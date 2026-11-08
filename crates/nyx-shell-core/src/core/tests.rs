@@ -19,6 +19,7 @@ fn harness(read_only: bool) -> Harness {
         suite_file: dir.path().join("user/theme.toml"),
         themes_dir: dir.path().join("user/themes"),
         omarchy_dir: dir.path().join("omarchy/current/theme"),
+        snapshot_file: dir.path().join("run/nyx/theme/system.json"),
     };
     let core = Core::new(Options { read_only, config, theme, env: Environment::default(), session_id: "test".into() });
     Harness { core, _dir: dir, clients: BTreeMap::new() }
