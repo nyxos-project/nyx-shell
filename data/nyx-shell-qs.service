@@ -1,0 +1,19 @@
+[Unit]
+Description=Nyx Shell surfaces (Quickshell)
+Documentation=https://github.com/nyxos-project/nyx-shell
+After=graphical-session.target nyx-shell-core.service
+Wants=nyx-shell-core.service
+PartOf=graphical-session.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+# Quickshell aborts without a display.
+ConditionEnvironment=WAYLAND_DISPLAY
+
+[Service]
+ExecStart=/usr/bin/qs --path %h/.local/share/nyx-shell/qml/shell.qml --no-duplicate
+Environment=QML_IMPORT_PATH=%h/.local/share/nyx-shell/qml
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target

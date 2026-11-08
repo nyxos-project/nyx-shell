@@ -1,0 +1,35 @@
+# Nyx Shell Core: the NyxOS defaults (installed as /etc/nyxos/defaults/shell.toml).
+# Your own values go in ~/.config/nyx/shell.toml and win key by key. A section that
+# doesn't validate falls back to these and shows in `nyx-shellctl status`.
+
+[focus]
+# Give focus back to the previous window when a transient overlay closes.
+restore = true
+debounce_ms = 500
+
+[ipc]
+# Events queued per client before it is told to resynchronize instead.
+max_queue = 256
+# Quickshell executables trusted as the shell's UI runtime (NixOS lists its store
+# path in /etc/nyx/trusted-bin instead).
+ui_runtimes = ["/usr/bin/quickshell"]
+
+[monitors]
+# Put persistent shell surfaces on headless outputs too.
+include_virtual = false
+# Per screen, by stable id (make|model|serial, or the connector name):
+# [monitors.screens."Dell Inc.|DELL U2723QE|ABC123"]
+# enabled = true
+# components = { "nyx.inspector" = false }
+
+# Overrides for overlays, by id:
+# [overlays."nyx.inspector"]
+# fullscreen = "block"        # show, hide or block
+# placement = "pointer"       # active, pointer, all or monitor:NAME
+# restore_focus = true
+
+# Keys for actions, written to ~/.config/hypr/nyx-shell.lua by
+# `nyx-shellctl shortcuts --apply`. None by default: NyxOS's Hyprland config already
+# binds Super+D, Super+N and Super+Space, and one key has one owner.
+[shortcuts]
+# "shell.control-center.toggle" = "SUPER + D"

@@ -1,0 +1,35 @@
+[package]
+name = "nyx-shell-core"
+description = "Nyx Shell Core: desktop state, overlay policy, focus, actions, components, settings and theme events for the Nyx shell"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[features]
+# Theme events carry the resolved palette from nyx-theme (which links GTK).
+default = ["palette"]
+palette = ["dep:nyx-theme"]
+
+[dependencies]
+nyx-shell-proto = { path = "../nyx-shell-proto" }
+nyx-desktop.workspace = true
+nyx-peer.workspace = true
+nyx-config.workspace = true
+nyx-theme = { workspace = true, optional = true }
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+tokio.workspace = true
+zbus.workspace = true
+tracing.workspace = true
+notify.workspace = true
+libc.workspace = true
+futures-util = { version = "0.3", default-features = false }
+
+[dev-dependencies]
+tempfile.workspace = true
+nyx-config.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread"] }

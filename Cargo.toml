@@ -1,0 +1,33 @@
+[workspace]
+resolver = "3"
+members = ["crates/nyx-shell-proto", "crates/nyx-shell-core", "apps/shell-core", "apps/shellctl"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+authors = ["Ken Smith"]
+repository = "https://github.com/nyxos-project/nyx-shell"
+
+[workspace.dependencies]
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "1"
+tokio = { version = "1", features = ["rt", "macros", "net", "io-util", "sync", "time", "signal", "fs"] }
+zbus = { version = "5", default-features = false, features = ["tokio"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+notify = { version = "8", default-features = false }
+libc = "0.2"
+tempfile = "3"
+# Shared Nyx crates, pinned like every Nyx repository. nyx-desktop without its `glib`
+# feature is plain std: the model, watcher and dispatchers.
+nyx-desktop = { git = "https://github.com/design-nexus/nyx-core.git", rev = "0b511a6e338f4c2c818bad6ebd351ae406578c00", default-features = false }
+nyx-peer = { git = "https://github.com/design-nexus/nyx-core.git", rev = "0b511a6e338f4c2c818bad6ebd351ae406578c00" }
+nyx-config = { git = "https://github.com/nyxos-project/nyx-system.git", rev = "e7c6f9a41cca0bc22c546b460734b10cafb63633" }
+nyx-theme = { git = "https://github.com/design-nexus/nyx-design.git", rev = "f8eb24b88e4b4729238cfdd10472c67c33daf903" }
+
+[profile.release]
+lto = "thin"
+strip = true
