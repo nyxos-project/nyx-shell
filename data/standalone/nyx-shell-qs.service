@@ -14,6 +14,8 @@ Environment=QML_IMPORT_PATH=%h/.local/share/nyx-shell/qml
 Environment=QS_NO_RELOAD_POPUP=1
 # systemd restarts it; no crash window over the desktop.
 Environment=QS_DISABLE_CRASH_HANDLER=1
+# Hyprland closes its request socket after every answer; Quickshell would log each one.
+Environment=QT_LOGGING_RULES=quickshell.io.socket.warning=false
 Environment=NYX_SHELL_MODE=auto
 Restart=on-failure
 RestartSec=2

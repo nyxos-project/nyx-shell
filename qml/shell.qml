@@ -67,8 +67,8 @@ ShellRoot {
         model: Object.keys(shell.found).sort()
         delegate: LazyLoader {
             required property string modelData
-            active: shell.found[modelData] !== undefined
-            source: active ? shell.found[modelData] + "/Main.qml" : ""
+            active: true
+            source: shell.found[modelData] !== undefined ? shell.found[modelData] + "/Main.qml" : ""
         }
     }
 
