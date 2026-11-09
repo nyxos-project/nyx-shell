@@ -13,12 +13,12 @@ removal of the GTK code (stage J) come later. Nyx Bar stays GTK.
 
 | Component | Laptop (Omarchy) | NyxOS |
 | --- | --- | --- |
-| Dock | QML, replacing the installed GTK dock after its parity check | QML |
-| Control Center | QML, replacing the installed GTK panel after its parity check | QML |
-| Notification Center (panel and pop-ups) | QML; `nyx-notifyd` unchanged | QML; `nyx-notifyd` unchanged |
-| Switcher (Quick Switch, Overview) | QML, replacing the installed GTK switcher after its parity check | QML |
-| Desktop Widgets | not installed | QML |
-| OSDs | not installed (Omarchy's own) | QML, new |
+| Dock | QML, installed (GTK dock off) | GTK until its package moves (open item) |
+| Control Center | QML, installed (GTK panel off) | QML (nyx-packages) |
+| Notification Center (panel and pop-ups) | QML, installed; `nyx-notifyd` unchanged | GTK until its package moves (open item) |
+| Switcher (Quick Switch, Overview) | QML, installed (GTK switcher off) | GTK until its package moves (open item) |
+| Desktop Widgets | not installed | QML (nyx-packages) |
+| OSDs | not installed (Omarchy's own) | QML, new (nyx-packages) |
 | Nyx Shell Core | not installed | `nyx-shell-core` |
 
 On the laptop nothing of Nyx Shell Core is installed: the components carry pinned copies
@@ -129,6 +129,84 @@ swapped). Handoff 01 measured Quickshell's own floor at 56 MiB private
 components' own debug output: Alt+Tab key to the switcher's request about 1 ms
 (`nyx-switcher-send` to the socket), panel show to layer surface about 5 ms.
 
+## Results (2026-11-08)
+
+What was built, where, and how it measures against the baselines above.
+
+| Component | Backend | QML | Commits |
+| --- | --- | --- | --- |
+| Shared | `nyx-ui-link` (nyx-core) | `Nyx.Shell` standalone mode, `BackendClient`, `BackendTopic`, the host; `Nyx.Ui`, `Nyx.PluginView` (nyx-design) | nyx-core `afae3bb`; nyx-shell `658efc6`…`fb7fdb2`; nyx-design `eeaecfe`, `013e706` |
+| OSD | the Control Center backend's `audio` and `brightness` topics | `qml/components/nyx-osd` | nyx-shell `08f572b` |
+| Control Center | `nyx-control-center-backend` | `qml/ControlCenter` | nyx-control-center `bb6e4ab`, `eb38dad`, `862ee8f` |
+| Dock | `nyx-dock-backend` | `qml/Dock` (window-controls pill included) | nyx-dock `ae5b141` |
+| Notification Center | `nyx-notification-center-backend` (owns the panel's bus name; notifyd unchanged) | `qml/NotificationCenter` | nyx-notification-center `4dc633a`, `ed26ab1` |
+| Switcher | `nyx-switcher-backend` (keeps the socket fast path) | `qml/Switcher` | nyx-switcher `6813cee` |
+| Desktop Widgets | `nyx-desktop-widgets-backend` | `qml/DesktopWidgets` | nyx-desktop-widgets `f629780` |
+
+Each laptop component was compared with its GTK copy on a headless output, screenshot
+beside screenshot (the panel, cards, pop-ups, previews, folders, the switcher card, the
+overview), then installed from its checkout. `nyx-shell-qs` runs one Quickshell process
+for all of them.
+
+### Memory and CPU (laptop, 30 s from `/proc`, everything idle and hidden)
+
+| Process | RSS | Private | Swapped | CPU | Wakeups/s |
+| --- | --- | --- | --- | --- | --- |
+| nyx-shell-qs (Dock shown; the rest hidden) | 196.0 MiB | 138.8 MiB | 20.4 MiB | 0.00 % | 0.0 |
+| nyx-dock-backend | 11.2 MiB | 5.3 MiB | 23.4 MiB | 0.23 % | 10.4 |
+| nyx-control-center-backend | 8.6 MiB | 3.0 MiB | 0.7 MiB | 0.13 % | 0.0 |
+| nyx-notification-center-backend | 9.7 MiB | 2.8 MiB | 0.0 MiB | 0.00 % | 0.0 |
+| nyx-switcher-backend | 35.7 MiB | 28.6 MiB | 0.1 MiB | 0.10 % | 10.1 |
+| nyx-notifyd (unchanged) | 7.2 MiB | 4.8 MiB | 0.0 MiB | 0.03 % | 0.0 |
+
+Together: 179 MiB private (223 MiB private plus swapped) for the runtime and the four
+backends, against 82 MiB private (182 MiB with swap) for the four GTK processes. The
+GTK processes had most of their memory swapped out at the baseline, so the fairer figure
+is with swap: about 40 MiB more. Most of the runtime is Quickshell's floor (56 MiB) and
+the icons and thumbnails the Dock and the Switcher keep decoded. Idle CPU and wakeups
+fell: the GTK dock alone used 1.6 % and 58 wakeups a second; the Dock now costs 0.23 %
+and 10 (its backend) with the runtime idle. The switcher went from 0.33 % to 0.10 %.
+
+### Latency
+
+- Alt+Tab: the key reaches the backend in 0.1 to 0.3 ms (`nyx-switcher-send`, unchanged),
+  and the card is up 5.4 to 6.7 ms after the key (median of ten 5.9 ms; the first opening
+  13 to 17 ms). Measured on a headless output with `NYX_SWITCHER_DEBUG=1`; a first frame
+  adds the compositor's time.
+- Panels: `Show` reaches the surface as one merge patch over the socket and a binding.
+  Not timed separately here; the baseline (about 5 ms to the layer surface) is the mark.
+
+### Rolling back
+
+Each component switches back to GTK, live, with its own command:
+
+```sh
+nyx-control-center --ui gtk
+nyx-dock --ui gtk
+nyx-notification-center --ui gtk
+nyx-switcher --ui gtk
+```
+
+`--ui qml` returns, `--ui` alone says which is on. Switching stops one set of units and
+starts the other and adds or removes the component's link in
+`~/.local/share/nyx-shell/components`; `nyx-shell-qs` stops when no component is left in
+it. On NyxOS the system configuration chooses (the packages' autostart units).
+
+### Known differences and gaps
+
+- The plugin view gaps above (plugin CSS, frames, some Pango) apply to the Control
+  Center's plugin tiles and the desktop widgets. Labels keep their line breaks, runs of
+  spaces and `<tt>` (nyx-design `013e706`); a span's `weight="light"` draws normal.
+- The Switcher can't read the keyboard's modifier state as GTK did (a 40 ms poll
+  covered a modifier released before the card had the keyboard). The release event
+  covers every case where the key is still down when the card maps, about 6 ms after the
+  key; a release inside those 6 ms leaves the card open until Enter, Esc or a click.
+  A Hyprland release bind (or a Quickshell keyboard-state API) would close the gap.
+- Keyboard paths (Switcher keys, Escape in panels, search fields) weren't exercised on
+  the laptop: tests never take the keyboard. Pointer and backend paths were.
+- Desktop Widgets' frame nodes and plugin CSS aren't drawn (no shipped widget uses
+  frames); menus take one level (submenus are dropped).
+
 ## Component inventories and parity matrices
 
 Status values: **kept** (same behaviour, same code), **moved** (same behaviour, Rust
@@ -204,7 +282,7 @@ mode) and the GTK panel and pop-ups (2.2k lines). Panel `Panel1` id
 | Inbox: pinned strip (2), grouping by app with expand/collapse, unread dots, empty state | QML from `Inbox`/`Pinned` | redrawn |
 | Pinned view, History (search, app filter, days filter, day headings, highlights) | QML, `History` query through the bridge | redrawn |
 | Settings view: DND, schedule, retention, delete history (confirm), codes, pop-up text, per-app pop-ups and history | QML, `SetSettings` | redrawn |
-| Card: icon chain, app name, time, title, body (3 lines), codes to Nyx Clipboard, app and Omarchy actions, pin, dismiss/delete, click to activate | QML, bridge calls | redrawn |
+| Card: icon chain, app name, time, title, body (3 lines), codes to Nyx Clipboard, app and Omarchy actions, pin, dismiss/delete, click to activate | QML, bridge calls; codes go through `nyx-notification-center --copy-code` on stdin (Nyx Clipboard takes them only from that program) | redrawn |
 | Pop-ups: top right, newest on top, 4 at most, timeouts from notifyd, hover pause, replaced in place, none while the panel is open | QML passive surface | redrawn |
 | Mark all read on close, Clear all spares pins | bridge → notifyd | kept |
 | Message bodies never logged; no QML persistence | QML holds notes in memory only while shown | kept |
@@ -236,14 +314,14 @@ geometry; no GTK), plugin host. `DesktopWidgets1`. Layout
 
 | Behaviour | Where it lives after | Status |
 | --- | --- | --- |
-| One bottom-layer surface per monitor, input only over interactive widgets | QML `MonitorSurfaces`, mask from the backend's placements | redrawn |
+| One bottom-layer surface per monitor, input only over interactive widgets | QML `ScreenSurface` per monitor, input mask from the backend's placements | redrawn |
 | Per-monitor and per-workspace layouts, `shown_on` | backend `layout` | moved |
 | Anchors, offsets, sizes (named × text scale, free with range) | backend `geometry` | moved |
 | Edit mode: move (snap, locate), resize, size cycle, background, pin to workspace, remove, add with live previews | QML drags, backend edits the file | redrawn |
 | Hide on lock, fullscreen, coverage | backend (logind, nyx-desktop) | moved |
 | Plugins: lifecycle, visibility per part, settings, theme, widgets list, suspension | backend `nyx-plugin-host` | moved |
 | Clicks: commands, popovers, menus, events with the part id | QML → backend | redrawn |
-| `DesktopWidgets1`, `--edit` | backend | kept |
+| `DesktopWidgets1`, `--edit` | backend (`nyx-desktop-widgets-backend --edit`) | kept |
 
 ### OSD (new, NyxOS)
 
@@ -264,7 +342,7 @@ light changes from the Control Center backend's providers.
   inside the shared runtime and have no app ID; backends take a socket path
   (`NYX_<APP>_UI_SOCKET`) and the GTK `--only` test switches keep working.
 - Pop-ups that arrive before the UI starts were never shown (the GTK UI doesn't call
-  `Popups()`); the QML Notification Center asks for them once at start.
+  `Popups()`); the Notification Center backend asks for them once at start.
 - `routes::direct()` reads `vpn::live()`, which nothing subscribes to, so Direct can miss
   a connected VPN right after start. Found, not changed here.
 

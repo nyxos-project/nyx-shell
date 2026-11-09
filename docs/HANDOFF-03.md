@@ -74,3 +74,16 @@ implement its own mutual exclusion.
   `f15fd58`), and the hyprlock fallback clears it after unlocking (nyxos `e0690d3`).
 - Persistent overlays should be shown again by their component after a Shell Core
   restart (they register again; showing is theirs to ask).
+- **Handoff 03 (stages A to G) is in** (see [MIGRATION.md](MIGRATION.md), Results). Left:
+  - NyxOS packages for the Dock, the Notification Center and the Switcher still start the
+    GTK interfaces; each moves like the Control Center's did (build the backend, install
+    its unit and `qml/<Component>` in `share/nyx-shell/components/<app>`, autostart the
+    backend instead of the GTK unit).
+  - The Switcher's quick-tap gap (a modifier released in the first ~6 ms): a release
+    bind in the switcher's integration, or a keyboard-state API in Quickshell.
+  - Plugin CSS and frame nodes in `Nyx.PluginView`; submenus in `Nyx.Ui.Menu`.
+  - The components run in standalone mode on the laptop; on NyxOS they should register
+    overlays with Shell Core instead of keeping `Panel1` (the panels' bus names stay for
+    command lines and bar widgets).
+  - Stage J (removing the GTK code) waits until the QML versions have run for a while;
+    `--ui gtk` is the way back until then.
