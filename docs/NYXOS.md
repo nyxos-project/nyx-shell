@@ -21,16 +21,8 @@ is installed but not started: with no components in it, it would cost Quickshell
 
 ## Switching it on
 
-The changes to nyx-packages and nyxos are in `packaging/` as patches against their
-heads of 2026-11-07, kept out of those repositories while other work was in flight
-there:
-
-```sh
-git -C ~/Projects/nyx-packages apply ~/Projects/nyx-shell/packaging/nyx-packages.patch
-git -C ~/Projects/nyxos apply ~/Projects/nyx-shell/packaging/nyxos.patch
-# nyx-packages gains the nyx-shell input: lock it (in the VM: scripts/dev-vm packages flake lock),
-# then nyxos takes the new nyx-packages (nix flake update nyx-packages) before it can use nyx.shell.
-```
+Wired in nyx-packages `aeaefc7` (the package, the option, the defaults layer) and
+nyxos `06891aa` (the option off, the Hyprland hook and shortcuts file).
 
 The NixOS module (nyx-packages `modules/nixos/default.nix`) gets an app entry:
 
@@ -109,8 +101,8 @@ startup and shutdown, live state against Hyprland, hotplug, the `Panel1` bus nam
 theme events, the Quickshell runtime connecting, registering, reconnecting after a
 Shell Core restart, overlay policy between a transient and a passive overlay.
 
-Done in the NyxOS VM (2026-11-07, `rebuild test` from `packaging/*.patch` with
-`nyx.shell.enable` on the dev host, Quickshell 0.3.0 from nixpkgs):
+Done in the NyxOS VM (2026-11-07, `rebuild test` with `nyx.shell.enable`
+on the dev host, Quickshell 0.3.0 from nixpkgs):
 
 - The package builds and its 86 tests pass in the Nix sandbox.
 - `nyx-shell-core.service` reaches `active` through `READY=1` (4.9 MB); the GTK panels'
