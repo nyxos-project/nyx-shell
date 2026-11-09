@@ -26,7 +26,7 @@ tempfile = "3"
 nyx-desktop = { git = "https://github.com/design-nexus/nyx-core.git", rev = "a93881d696abb6e9176675d5c84374b9bd124167", default-features = false }
 nyx-peer = { git = "https://github.com/design-nexus/nyx-core.git", rev = "a93881d696abb6e9176675d5c84374b9bd124167" }
 nyx-config = { git = "https://github.com/nyxos-project/nyx-system.git", rev = "87461e53c2fc5fb5e045204e2a492c32c86a3f26" }
-nyx-theme = { git = "https://github.com/design-nexus/nyx-design.git", rev = "f8eb24b88e4b4729238cfdd10472c67c33daf903" }
+nyx-theme = { git = "https://github.com/design-nexus/nyx-design.git", rev = "40db521bab468d54f18f65c6aabd7fc8533d6a4d" }
 
 [profile.release]
 lto = "thin"
