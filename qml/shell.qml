@@ -24,7 +24,11 @@ ShellRoot {
         const home = Quickshell.env("HOME");
         const data = Quickshell.env("XDG_DATA_HOME") || (home + "/.local/share");
         const dirs = (Quickshell.env("XDG_DATA_DIRS") || "/usr/local/share:/usr/share").split(":").filter(p => p !== "");
-        return [data].concat(dirs).map(d => d + "/nyx-shell/components");
+        // NixOS's profiles, for a user manager started without the session's data dirs.
+        const user = Quickshell.env("USER");
+        const nixos = ["/run/current-system/sw/share"].concat(user ? ["/etc/profiles/per-user/" + user + "/share"] : []);
+        const all = [data].concat(dirs, nixos.filter(d => dirs.indexOf(d) < 0));
+        return all.map(d => d + "/nyx-shell/components");
     }
     readonly property var only: (Quickshell.env("NYX_SHELL_COMPONENTS") || "").split(",").filter(s => s !== "")
 
