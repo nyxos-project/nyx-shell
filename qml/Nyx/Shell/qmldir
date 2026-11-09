@@ -9,3 +9,6 @@ MonitorSurfaces 1.0 MonitorSurfaces.qml
 KeyboardScope 1.0 KeyboardScope.qml
 LoadingState 1.0 LoadingState.qml
 ErrorState 1.0 ErrorState.qml
+BackendClient 1.0 BackendClient.qml
+internal Standalone Standalone.qml
+BackendTopic 1.0 BackendTopic.qml

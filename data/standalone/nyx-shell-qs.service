@@ -1,0 +1,22 @@
+[Unit]
+Description=Nyx shell surfaces (Quickshell, without Shell Core)
+Documentation=https://github.com/nyxos-project/nyx-shell
+After=graphical-session.target
+PartOf=graphical-session.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+# Quickshell aborts without a display.
+ConditionEnvironment=WAYLAND_DISPLAY
+
+[Service]
+ExecStart=/usr/bin/qs --path %h/.local/share/nyx-shell/qml/shell.qml --no-duplicate
+Environment=QML_IMPORT_PATH=%h/.local/share/nyx-shell/qml
+Environment=QS_NO_RELOAD_POPUP=1
+# systemd restarts it; no crash window over the desktop.
+Environment=QS_DISABLE_CRASH_HANDLER=1
+Environment=NYX_SHELL_MODE=auto
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target

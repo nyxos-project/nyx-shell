@@ -8,8 +8,17 @@ import Quickshell.Io
 // reconnecting with backoff. Surfaces bind to `desktop`, `overlays`, `theme`, `config`.
 // Each attempt uses a new Socket: some Quickshell versions don't connect a Socket
 // again after a refused attempt.
+//
+// Where Shell Core isn't installed (Omarchy), the same API runs standalone
+// (Standalone.qml). NYX_SHELL_MODE picks: `core` waits for Shell Core however long it
+// takes (NyxOS), `standalone` never connects, and unset tries Shell Core once and
+// goes standalone if nothing answers.
 Singleton {
     id: root
+
+    readonly property string mode: Quickshell.env("NYX_SHELL_MODE") || "auto"
+    property bool standalone: mode === "standalone"
+    property var _local: null
 
     readonly property string socketPath: {
         const s = Quickshell.env("NYX_SHELL_SOCKET");
@@ -46,6 +55,10 @@ Singleton {
     property int _waiting: 0
 
     function request(op, body, callback) {
+        if (root._local) {
+            root._local.request(op, body, callback);
+            return;
+        }
         const sock = root.sock;
         if (!sock || !sock.connected) {
             if (callback)
@@ -254,14 +267,56 @@ Singleton {
         root._since = {};
     }
 
-    function _connect() {
+    // Called by Standalone.qml.
+    function _overlayChanged(s) {
+        const o = Object.assign({}, root.overlays);
+        o[s.id] = s;
+        root.overlays = o;
+    }
+    function _overlayRemoved(id) {
+        const o = Object.assign({}, root.overlays);
+        delete o[id];
+        root.overlays = o;
+    }
+    function _standaloneReady() {
+        root.hello = { protocol: 1, server: "standalone" };
+        root.ready = true;
+        root.reconnected();
+    }
+
+    function _goStandalone() {
+        if (root._local)
+            return;
         if (root.sock) {
             const old = root.sock;
             root.sock = null;
             old.destroy();
         }
-        if (root.socketPath === "")
+        root.standalone = true;
+        root.lastError = "";
+        root._local = standaloneComponent.createObject(root, { core: root });
+    }
+
+    Component {
+        id: standaloneComponent
+        Standalone {}
+    }
+
+    function _connect() {
+        if (root.standalone) {
+            _goStandalone();
             return;
+        }
+        if (root.sock) {
+            const old = root.sock;
+            root.sock = null;
+            old.destroy();
+        }
+        if (root.socketPath === "") {
+            if (root.mode !== "core")
+                _goStandalone();
+            return;
+        }
         // Assigned before connecting, so a refusal reported at once isn't ignored.
         const s = socketComponent.createObject(root);
         root.sock = s;
@@ -305,12 +360,19 @@ Singleton {
                     root._subscribe();
                 } else {
                     root._reset();
-                    retry.restart();
+                    if (root.mode === "auto" && !root.hello)
+                        root._goStandalone();
+                    else
+                        retry.restart();
                 }
             }
             onError: error => {
                 if (socket !== root.sock)
                     return;
+                if (root.mode === "auto" && !root.hello) {
+                    root._goStandalone();
+                    return;
+                }
                 root.lastError = "can't reach Nyx Shell Core at " + root.socketPath;
                 retry.restart();
             }
