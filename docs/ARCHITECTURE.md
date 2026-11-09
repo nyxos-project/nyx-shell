@@ -66,7 +66,7 @@ flowchart LR
 | --- | --- | --- |
 | Session | `session.rs` | Lifecycle state (starting, ready, degraded, stopping), session id, readiness notification, diagnostics |
 | Desktop state | `state.rs` | Normalizes `nyx_desktop::Desktop` into the wire schema, assigns generations, computes deltas |
-| Hyprland adapter | `compositor.rs` | The watcher, monitor geometry and refresh rate (also on the `nyx-shell-monitors` hook), dispatching (disabled in read-only mode) |
+| Hyprland adapter | `compositor.rs` | The `nyx-desktop` watcher (windows, workspaces, monitors with refresh rate, mapped layer surfaces), dispatching (disabled in read-only mode) |
 | Overlay policy | `overlay.rs` | Registry of overlay policies, show/hide/toggle, exclusive groups, fullscreen and lock rules, placement |
 | Focus | `focus.rs` | Remembers the focused window when a transient overlay opens; gives focus back only when safe |
 | Actions | `actions.rs` | Fixed action table, routing, availability, shortcut file generation and duplicate checks |
@@ -92,21 +92,18 @@ flowchart LR
 - Each client has a bounded queue (`ipc.max_queue`, default 256). If it fills, the
   client's pending events are dropped and it is sent one `Resync` naming the topics to
   fetch again, instead of being disconnected or slowing everyone down.
-- Refresh rate isn't in `nyx-desktop`'s model; the adapter reads it with one
-  `j/monitors all` request when monitors change (rare). Moving it into `nyx-desktop` is
-  noted for nyx-core.
 - Hyprland's event socket says nothing when a monitor's mode, scale or position changes
-  at runtime (only the Lua event `monitor.layout_changed` fires), so every
-  `nyx-desktop` user keeps stale geometry until the next monitor event. NyxOS's Hyprland
-  config turns that Lua event into a socket event:
+  at runtime (only the Lua event `monitor.layout_changed` fires). NyxOS's Hyprland config
+  turns that Lua event into a socket event:
 
   ```lua
-  hl.on("monitor.layout_changed", function() hl.dispatch(hl.dsp.event("nyx-shell-monitors")) end)
+  hl.on("monitor.layout_changed", function() hl.dispatch(hl.dsp.event("nyx-monitors")) end)
   ```
 
-  Hyprland posts it as `custom>>nyx-shell-monitors`; a second, blocked reader in Shell
-  Core reads the monitors again when it sees it. No compositor change, only supported
-  configuration and IPC.
+  Hyprland posts it as `custom>>nyx-monitors`, and `nyx-desktop` reads the monitors
+  again when it sees it (nyx-core `a93881d`, which also brought refresh rates and mapped
+  layer surfaces into the model). No compositor change, only supported configuration
+  and IPC.
 
 ### Overlays
 
@@ -138,8 +135,10 @@ Rules (`overlay.rs`):
 - When an overlay's monitor goes away it moves to the active monitor.
 - **`Panel1` bridge:** Shell Core listens for `Opened(s id)`. A GTK panel opening hides
   Shell Core overlays in its group. A Shell Core overlay opening in group `panels` emits
-  `Opened("nyx-shell:ID")`, which the GTK panels already obey. Their open state is read
-  with `IsOpen` when needed (no polling); bus-name ownership tells whether they run.
+  `Opened("nyx-shell:ID")`, which the GTK panels already obey. Whether a panel is open
+  follows its layer surface (`nyx-control-center`, `nyx-notification-center`,
+  `nyx-switcher`, `nyx-overview`) as Hyprland maps and unmaps it, so a panel closed with
+  Escape or a click outside is seen at once; bus-name ownership tells whether they run.
   The panels keep working unchanged whether or not Shell Core runs.
 
 ### Focus

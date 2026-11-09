@@ -58,9 +58,9 @@ leaves it off (`lib.mkDefault false`) until Handoff 03.
 `nyxos/modules/home/hyprland.nix`, when `osConfig.nyx.shell.enable`:
 
 ```lua
--- Nyx Shell Core: Hyprland's event socket doesn't report monitor mode, scale or
--- position changes; this posts them as custom>>nyx-shell-monitors.
-hl.on("monitor.layout_changed", function() hl.dispatch(hl.dsp.event("nyx-shell-monitors")) end)
+-- Hyprland's event socket doesn't report monitor mode, scale or position changes;
+-- this posts them as custom>>nyx-monitors, which nyx-desktop reads.
+hl.on("monitor.layout_changed", function() hl.dispatch(hl.dsp.event("nyx-monitors")) end)
 
 -- Shell Core's shortcuts, written by `nyx-shellctl shortcuts --apply` from [shortcuts].
 local nyx_shell = io.open((os.getenv("HOME") or "") .. "/.config/hypr/nyx-shell.lua")

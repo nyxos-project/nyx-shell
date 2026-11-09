@@ -16,6 +16,8 @@ pub struct World {
     pub workspaces: Vec<Value>,
     pub clients: Vec<Value>,
     pub active: String,
+    /// Mapped layer surfaces' namespaces.
+    pub layers: Vec<String>,
 }
 
 pub fn monitor(id: i64, name: &str, ws: i64, refresh: f64, focused: bool) -> Value {
@@ -64,6 +66,10 @@ impl Fake {
                         "j/workspaces" => serde_json::to_string(&w.workspaces).unwrap(),
                         "j/clients" => serde_json::to_string(&w.clients).unwrap(),
                         "j/activewindow" => json!({"address": format!("0x{}", w.active)}).to_string(),
+                        "j/layers" => {
+                            let surfaces: Vec<Value> = w.layers.iter().map(|n| json!({"namespace": n})).collect();
+                            json!({"eDP-1": {"levels": {"2": surfaces}}}).to_string()
+                        }
                         "j/cursorpos" => json!({"x": 10, "y": 10}).to_string(),
                         d if d.starts_with("dispatch ") => {
                             dispatches.lock().unwrap().push(d["dispatch ".len()..].to_string());

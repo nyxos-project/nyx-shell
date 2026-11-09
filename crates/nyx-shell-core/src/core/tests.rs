@@ -55,7 +55,7 @@ impl Harness {
     }
 
     fn desktop(&mut self, d: nyx_desktop::Desktop) {
-        self.core.handle(Msg::Desktop(Update { desktop: Arc::new(d), monitors: None }));
+        self.core.handle(Msg::Desktop(Update { desktop: Arc::new(d) }));
     }
 }
 
@@ -217,10 +217,38 @@ fn gtk_panels_and_client_overlays_exclude_each_other() {
     let find = |id: &str| o["overlays"].as_array().unwrap().iter().find(|x| x["id"] == id).unwrap().clone();
     assert_eq!(find("inspector")["visible"], false);
     assert_eq!(find("control-center")["visible"], true);
-    // Looking at overlays asks the open panel whether it still is.
-    assert!(h.core.take_effects().iter().any(|e| matches!(e, Effect::Bridge(BridgeCmd::Refresh(p)) if p[0].0 == "control-center")));
-    h.core.handle(Msg::PanelState { id: "control-center".into(), open: false });
+    // Our own announcements are ignored.
     h.core.handle(Msg::PanelOpened { id: "nyx-shell:inspector".into() });
+    assert!(h.core.overlays.get("control-center").unwrap().visible);
+}
+
+#[test]
+fn panels_follow_their_layer_surfaces() {
+    let mut h = harness(false);
+    let visible = |h: &Harness, id: &str| h.core.overlays.get(id).unwrap().visible;
+    let mut d = crate::state::tests::desktop();
+    h.desktop(d.clone());
+    // Announced before its surface maps: the layer catching up doesn't close it.
+    h.core.handle(Msg::PanelOpened { id: "control-center".into() });
+    h.desktop(d.clone());
+    assert!(visible(&h, "control-center"));
+    d.layers.insert("nyx-control-center".into(), 1);
+    h.desktop(d.clone());
+    assert!(visible(&h, "control-center"));
+    // Closed however it was hidden (Escape, a click outside): its surface unmaps.
+    d.layers.remove("nyx-control-center");
+    h.desktop(d.clone());
+    assert!(!visible(&h, "control-center"));
+    // Shown without announcing itself, and the switcher's overview counts as the switcher.
+    d.layers.insert("nyx-overview".into(), 1);
+    h.desktop(d.clone());
+    assert!(visible(&h, "switcher"));
+    // Hyprland unreachable: the last known state stays.
+    let mut gone = d.clone();
+    gone.connected = false;
+    gone.layers.clear();
+    h.desktop(gone);
+    assert!(visible(&h, "switcher"));
 }
 
 #[test]

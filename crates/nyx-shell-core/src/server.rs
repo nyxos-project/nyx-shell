@@ -84,7 +84,8 @@ pub async fn run(
         tracing::warn!(error = %e, "shell settings");
     }
     let max_queue = core.config().config.ipc.max_queue;
-    let trust = o.trust.clone().unwrap_or_else(|| Trust::standard(&core.config().config.ipc.ui_runtimes));
+    let mut ui_runtimes = core.config().config.ipc.ui_runtimes.clone();
+    let (trust_tx, trust_rx) = tokio::sync::watch::channel(o.trust.clone().unwrap_or_else(|| Trust::standard(&ui_runtimes)));
 
     let _watcher = o.hyprland.then(|| {
         let tx = tx.clone();
@@ -92,12 +93,6 @@ pub async fn run(
             let _ = tx.send(Msg::Desktop(u));
         })
     });
-    if o.hyprland {
-        let tx = tx.clone();
-        crate::compositor::watch_monitor_hook(move |m| {
-            let _ = tx.send(Msg::Monitors(m));
-        });
-    }
     let bridge = o.dbus.then(|| {
         let (btx, brx) = mpsc::unbounded_channel();
         tokio::spawn(crate::bridge::run(tx.clone(), brx));
@@ -112,7 +107,7 @@ pub async fn run(
             let _ = tx.send(Msg::ReadyTimeout);
         });
     }
-    tokio::spawn(accept(listener, tx.clone(), trust, max_queue));
+    tokio::spawn(accept(listener, tx.clone(), trust_rx, max_queue));
     if let Some(s) = started {
         let _ = s.send(tx.clone());
     }
@@ -137,6 +132,12 @@ pub async fn run(
         }
         for effect in core.take_effects() {
             carry_out(effect, &o, bridge.as_ref(), &tx);
+        }
+        // `ipc.ui_runtimes` changed: new connections are classified with it.
+        if o.trust.is_none() && core.config().config.ipc.ui_runtimes != ui_runtimes {
+            ui_runtimes = core.config().config.ipc.ui_runtimes.clone();
+            tracing::info!(?ui_runtimes, "trusted UI runtimes changed");
+            let _ = trust_tx.send(Trust::standard(&ui_runtimes));
         }
     }
     let _ = std::fs::remove_file(&claim.socket);
@@ -230,7 +231,7 @@ fn launch(argv: &[String]) -> Result<(), ErrorBody> {
     Ok(())
 }
 
-async fn accept(listener: UnixListener, tx: mpsc::UnboundedSender<Msg>, trust: Trust, max_queue: usize) {
+async fn accept(listener: UnixListener, tx: mpsc::UnboundedSender<Msg>, trust: tokio::sync::watch::Receiver<Trust>, max_queue: usize) {
     // SAFETY: getuid has no preconditions.
     let uid = unsafe { libc::getuid() };
     let mut next: ClientId = 0;
@@ -242,7 +243,7 @@ async fn accept(listener: UnixListener, tx: mpsc::UnboundedSender<Msg>, trust: T
             continue;
         }
         let pid = cred.pid();
-        let identity = trust.classify(pid.and_then(exe_of).as_deref(), pid);
+        let identity = trust.borrow().classify(pid.and_then(exe_of).as_deref(), pid);
         next += 1;
         let client = next;
         tracing::debug!(client, program = %identity.program, "connected");

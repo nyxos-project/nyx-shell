@@ -6,7 +6,6 @@ use nyx_desktop::hypr::Instance;
 use nyx_desktop::Desktop;
 use nyx_shell_proto::{DesktopState, ErrorBody, ErrorCode, WindowAction, WindowActionKind, WorkspaceAction};
 use serde::Deserialize;
-use std::collections::HashMap;
 use std::sync::Arc;
 
 /// What Shell Core asks of the compositor. A trait so tests can record dispatches.
@@ -60,82 +59,14 @@ impl Compositor for Hyprland {
     }
 }
 
-/// What `nyx-desktop`'s model doesn't carry or may hold stale: the refresh rate, and
-/// geometry changed without an event (mode, scale, position set at runtime).
-#[derive(Debug, Clone, PartialEq, Deserialize)]
-pub struct MonitorExtra {
-    #[serde(default, rename = "refreshRate")]
-    pub refresh_rate: f64,
-    #[serde(default)]
-    pub width: i32,
-    #[serde(default)]
-    pub height: i32,
-    #[serde(default)]
-    pub x: i32,
-    #[serde(default)]
-    pub y: i32,
-    #[serde(default)]
-    pub scale: f64,
-    #[serde(default)]
-    pub transform: i32,
-}
-
-/// Every monitor's [`MonitorExtra`], by connector.
-pub fn monitor_extras(hypr: &Instance) -> HashMap<String, MonitorExtra> {
-    #[derive(Deserialize)]
-    struct Mon {
-        name: String,
-        #[serde(flatten)]
-        extra: MonitorExtra,
-    }
-    hypr.json::<Vec<Mon>>("monitors all").map(|ms| ms.into_iter().map(|m| (m.name, m.extra)).collect()).unwrap_or_default()
-}
-
 /// One update from the watcher thread.
 pub struct Update {
     pub desktop: Arc<Desktop>,
-    /// Read again when monitors changed.
-    pub monitors: Option<HashMap<String, MonitorExtra>>,
 }
 
 /// Start the watcher; `send` runs on its thread for every update.
 pub fn watch(send: impl Fn(Update) + Send + 'static) -> nyx_desktop::watch::Watcher {
-    nyx_desktop::watch::watch(move |u| {
-        let monitors = (u.changes.monitors && u.desktop.connected).then(|| Instance::find().map(|h| monitor_extras(&h)).unwrap_or_default());
-        send(Update { desktop: u.desktop, monitors });
-    })
-}
-
-/// The custom event NyxOS's Hyprland config posts on `monitor.layout_changed`, which
-/// Hyprland's event socket doesn't report itself (`docs/NYXOS.md`):
-/// `hl.on("monitor.layout_changed", function() hl.dispatch(hl.dsp.event("nyx-shell-monitors")) end)`
-pub const MONITORS_EVENT: &str = "custom>>nyx-shell-monitors";
-
-/// Listen for [`MONITORS_EVENT`] and read the monitors again each time; reconnects
-/// like the watcher. A thread blocked in `read`: no timers.
-pub fn watch_monitor_hook(send: impl Fn(HashMap<String, MonitorExtra>) + Send + 'static) {
-    std::thread::Builder::new()
-        .name("nyx-shell-monitors".into())
-        .spawn(move || {
-            use std::io::BufRead;
-            let mut backoff = std::time::Duration::from_millis(100);
-            loop {
-                let connected = Instance::find().and_then(|i| Ok((std::os::unix::net::UnixStream::connect(i.event_socket())?, i)));
-                let Ok((stream, hypr)) = connected else {
-                    std::thread::sleep(backoff);
-                    backoff = (backoff * 2).min(std::time::Duration::from_secs(3));
-                    continue;
-                };
-                backoff = std::time::Duration::from_millis(100);
-                for line in std::io::BufReader::new(stream).lines() {
-                    let Ok(line) = line else { break };
-                    if line == MONITORS_EVENT {
-                        send(monitor_extras(&hypr));
-                    }
-                }
-            }
-        })
-        .expect("spawn the monitor hook reader");
+    nyx_desktop::watch::watch(move |u| send(Update { desktop: u.desktop }))
 }
 
 fn invalid(msg: impl Into<String>) -> ErrorBody {

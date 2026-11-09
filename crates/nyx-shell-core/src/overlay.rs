@@ -245,7 +245,7 @@ impl Overlays {
         changes
     }
 
-    /// What a GTK panel said when asked (`IsOpen`), or that it went away.
+    /// A GTK panel's layer surface mapped or unmapped, or the panel went away.
     pub fn panel_state(&mut self, id: &str, open: bool, desktop: &DesktopState, locked: bool) -> Vec<Change> {
         if !self.entries.get(id).is_some_and(Entry::is_panel1) {
             return Vec::new();

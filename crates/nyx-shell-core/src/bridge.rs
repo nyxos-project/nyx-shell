@@ -38,14 +38,13 @@ pub async fn run(tx: mpsc::UnboundedSender<Msg>, mut cmds: mpsc::UnboundedReceiv
     let commands = async {
         while let Some(cmd) = cmds.recv().await {
             let conn = conn.clone();
-            let tx = tx.clone();
-            tokio::spawn(async move { command(&conn, cmd, &tx).await });
+            tokio::spawn(async move { command(&conn, cmd).await });
         }
     };
     tokio::join!(names, opened, lock, theme, commands);
 }
 
-async fn command(conn: &Connection, cmd: BridgeCmd, tx: &mpsc::UnboundedSender<Msg>) {
+async fn command(conn: &Connection, cmd: BridgeCmd) {
     match cmd {
         BridgeCmd::Announce(id) => {
             let sent = conn.emit_signal(Option::<zbus::names::BusName>::None, PATH, INTERFACE, "Opened", &(id.as_str(),)).await;
@@ -65,16 +64,6 @@ async fn command(conn: &Connection, cmd: BridgeCmd, tx: &mpsc::UnboundedSender<M
                     Ok(v) => Reply::ok(id, v),
                     Err(e) => Reply::err(id, e),
                 });
-            }
-        }
-        BridgeCmd::Refresh(panels) => {
-            for (id, bus) in panels {
-                let r = tokio::time::timeout(TIMEOUT, conn.call_method(Some(bus.as_str()), PATH, Some(INTERFACE), "IsOpen", &())).await;
-                let open = match r {
-                    Ok(Ok(m)) => m.body().deserialize::<bool>().unwrap_or(false),
-                    _ => false,
-                };
-                let _ = tx.send(Msg::PanelState { id, open });
             }
         }
     }

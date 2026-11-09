@@ -5,7 +5,7 @@
 //! reporting back with another message. Tests drive it directly.
 
 use crate::actions::{self, Environment, Route};
-use crate::compositor::{self, MonitorExtra, Update};
+use crate::compositor::{self, Update};
 use crate::config::ConfigStore;
 use crate::focus::Focus;
 use crate::overlay::{Change, Overlays, PANEL1};
@@ -22,7 +22,7 @@ use nyx_shell_proto::{
     Placement, Reply, Routed, SessionState, SessionStatus, ThemeState, Topic, MIN_PROTOCOL_VERSION, PROTOCOL_VERSION,
 };
 use serde_json::{Value, json};
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -38,13 +38,9 @@ pub enum Msg {
     Disconnect { client: ClientId },
     Request { client: ClientId, id: u64, op: Op, reply: oneshot::Sender<Reply> },
     Desktop(Update),
-    /// Monitors read again after `monitor.layout_changed` (the NyxOS hook).
-    Monitors(HashMap<String, MonitorExtra>),
     Locked(bool),
     /// `Panel1.Opened(id)` from a GTK panel.
     PanelOpened { id: String },
-    /// A GTK panel's answer to `IsOpen`.
-    PanelState { id: String, open: bool },
     /// A watched bus name gained or lost its owner.
     BusOwner { bus: String, present: bool },
     /// The session bus connection is up (or failed).
@@ -61,9 +57,14 @@ pub enum BridgeCmd {
     /// Emit `Panel1.Opened("nyx-shell:ID")` so the GTK panels close.
     Announce(String),
     Toggle { bus: String, reply: Option<ReplyTo> },
-    /// Ask these panels (id, bus) `IsOpen`.
-    Refresh(Vec<(String, String)>),
 }
+
+/// The GTK panels' layer surfaces, by `Panel1` id: a panel is open while one is mapped.
+const PANEL_LAYERS: &[(&str, &[&str])] = &[
+    ("control-center", &["nyx-control-center"]),
+    ("notification-center", &["nyx-notification-center"]),
+    ("switcher", &["nyx-switcher", "nyx-overview"]),
+];
 
 pub enum Effect {
     Dispatch { steps: Vec<Dispatch>, reply: Option<ReplyTo> },
@@ -98,8 +99,9 @@ pub struct Core {
     read_only: bool,
     state: SessionState,
     desktop: DesktopState,
-    monitors: HashMap<String, MonitorExtra>,
     raw: Arc<nyx_desktop::Desktop>,
+    /// Whether each panel's layer surface was mapped at the last update.
+    panel_layers: BTreeMap<&'static str, bool>,
     last_event: Option<Instant>,
     locked: bool,
     clients: BTreeMap<ClientId, Client>,
@@ -154,8 +156,8 @@ impl Core {
             read_only: o.read_only,
             state: SessionState::Starting,
             desktop,
-            monitors: HashMap::new(),
             raw: Arc::default(),
+            panel_layers: BTreeMap::new(),
             last_event: None,
             locked: false,
             clients: BTreeMap::new(),
@@ -208,10 +210,6 @@ impl Core {
             Msg::Disconnect { client } => self.disconnect(client),
             Msg::Request { client, id, op, reply } => self.request(client, id, op, reply),
             Msg::Desktop(u) => self.desktop_update(u),
-            Msg::Monitors(m) => {
-                self.monitors = m;
-                self.rebuild();
-            }
             Msg::Locked(l) => self.set_locked(l),
             Msg::PanelOpened { id } => {
                 if id.starts_with("nyx-shell:") {
@@ -219,11 +217,6 @@ impl Core {
                 }
                 let before = self.overlays.any_restoring_visible();
                 let changes = self.overlays.panel_opened(&id, &self.desktop, self.locked);
-                self.apply_overlay_changes(before, changes);
-            }
-            Msg::PanelState { id, open } => {
-                let before = self.overlays.any_restoring_visible();
-                let changes = self.overlays.panel_state(&id, open, &self.desktop, self.locked);
                 self.apply_overlay_changes(before, changes);
             }
             Msg::BusOwner { bus, present } => self.bus_owner(bus, present),
@@ -290,10 +283,7 @@ impl Core {
                     }))
                 }
             }
-            Op::GetSessionStatus => {
-                self.refresh_panels();
-                Ok(to_value(&self.status()))
-            }
+            Op::GetSessionStatus => Ok(to_value(&self.status())),
             Op::SubscribeSessionEvents => Ok(self.subscribe(client, Topic::Session, "status", to_value(&self.status()))),
             Op::GetDesktopSnapshot => Ok(to_value(&self.desktop)),
             Op::SubscribeDesktopChanges => Ok(self.subscribe(client, Topic::Desktop, "state", to_value(&self.desktop))),
@@ -335,12 +325,8 @@ impl Core {
             }
             Op::HideOverlay { id: overlay } => self.overlay_op(|o, d, l| o.hide(&overlay, d, l), &overlay),
             Op::ToggleOverlay { id: overlay } => self.overlay_op(|o, d, l| o.toggle(&overlay, d, l), &overlay),
-            Op::GetOverlayState => {
-                self.refresh_panels();
-                Ok(json!({ "overlays": self.overlays.all() }))
-            }
+            Op::GetOverlayState => Ok(json!({ "overlays": self.overlays.all() })),
             Op::SubscribeOverlayState => {
-                self.refresh_panels();
                 let all = to_value(&self.overlays.all());
                 Ok(self.subscribe(client, Topic::Overlays, "overlays", all))
             }
@@ -519,34 +505,36 @@ impl Core {
         }
     }
 
-    /// Ask the panels thought open whether they still are (no polling: only when a
-    /// client looks).
-    fn refresh_panels(&mut self) {
-        let open: Vec<(String, String)> = self
-            .overlays
-            .open_panels(PANELS)
-            .into_iter()
-            .filter_map(|id| PANEL1.iter().find(|(p, _)| *p == id).map(|(p, b)| (p.to_string(), b.to_string())))
-            .collect();
-        if !open.is_empty() {
-            self.effects.push(Effect::Bridge(BridgeCmd::Refresh(open)));
-        }
-    }
-
     // ---------- Desktop, lock, buses ----------
 
     fn desktop_update(&mut self, u: Update) {
-        if let Some(m) = u.monitors {
-            self.monitors = m;
-        }
         self.last_event = Some(Instant::now());
         self.raw = u.desktop;
+        self.follow_panel_layers();
         self.rebuild();
+    }
+
+    /// A GTK panel is open while its layer surface is mapped: Hyprland reports it
+    /// opening and closing, however the panel was shown or hidden. Only changes count,
+    /// so a panel that announced itself before its surface mapped isn't closed again.
+    fn follow_panel_layers(&mut self) {
+        if !self.raw.connected {
+            return;
+        }
+        for (id, namespaces) in PANEL_LAYERS {
+            let open = namespaces.iter().any(|n| self.raw.layer_open(n));
+            if self.panel_layers.insert(id, open) == Some(open) {
+                continue;
+            }
+            let before = self.overlays.any_restoring_visible();
+            let changes = self.overlays.panel_state(id, open, &self.desktop, self.locked);
+            self.apply_overlay_changes(before, changes);
+        }
     }
 
     /// Normalize the latest compositor state again and tell clients what changed.
     fn rebuild(&mut self) {
-        let next = normalize(&self.raw, self.desktop.generation + 1, &self.monitors);
+        let next = normalize(&self.raw, self.desktop.generation + 1);
         let delta = next.delta_from(&self.desktop);
         if delta.is_empty() {
             return;

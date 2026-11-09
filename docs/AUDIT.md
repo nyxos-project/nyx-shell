@@ -186,8 +186,9 @@ policy test, not a product.
   position changes at runtime (`hl.monitor` through `eval`, a settings change); only the
   Lua event `monitor.layout_changed` fires. Every `nyx-desktop` user keeps the old
   geometry until the next monitor event. Shell Core closes it without a patch: NyxOS's
-  Hyprland config posts `custom>>nyx-shell-monitors` from that Lua event
-  (`hl.dsp.event`), and Shell Core reads the monitors again when it arrives.
+  Hyprland config posts `custom>>nyx-monitors` from that Lua event (`hl.dsp.event`),
+  and `nyx-desktop` (nyx-core `a93881d`) reads the monitors again when it arrives, for
+  every app on it.
 
 ### Theme (`nyx-design`, `nyx-themes`, `nyx-system/apps/themed`)
 

@@ -728,7 +728,7 @@ dependencies = [
 [[package]]
 name = "nyx-desktop"
 version = "0.1.0"
-source = "git+https://github.com/design-nexus/nyx-core.git?rev=0b511a6e338f4c2c818bad6ebd351ae406578c00#0b511a6e338f4c2c818bad6ebd351ae406578c00"
+source = "git+https://github.com/design-nexus/nyx-core.git?rev=a93881d696abb6e9176675d5c84374b9bd124167#a93881d696abb6e9176675d5c84374b9bd124167"
 dependencies = [
  "anyhow",
  "serde",
@@ -739,7 +739,7 @@ dependencies = [
 [[package]]
 name = "nyx-peer"
 version = "0.1.0"
-source = "git+https://github.com/design-nexus/nyx-core.git?rev=0b511a6e338f4c2c818bad6ebd351ae406578c00#0b511a6e338f4c2c818bad6ebd351ae406578c00"
+source = "git+https://github.com/design-nexus/nyx-core.git?rev=a93881d696abb6e9176675d5c84374b9bd124167#a93881d696abb6e9176675d5c84374b9bd124167"
 
 [[package]]
 name = "nyx-shell-core"

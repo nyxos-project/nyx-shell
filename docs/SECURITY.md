@@ -66,7 +66,7 @@ How a client is classified (`peer.rs`), from `/proc/PID/exe` at connect time:
 | --- | --- | --- |
 | `nyx-shellctl` | `nyx_peer::program`: in Shell Core's own folder or a folder listed in root-owned `/etc/nyx/trusted-bin` | all |
 | `nyx-settings` | same | `desktop.read`, `config.write` |
-| Quickshell runtime | executable named `quickshell` in a trusted folder, or a path in `ipc.ui_runtimes` (default `/usr/bin/quickshell`) | `desktop.read`, `desktop.act`, `overlay.manage`, `component.register`, `action.invoke` |
+| Quickshell runtime | executable named `quickshell` in a trusted folder, or a path in `ipc.ui_runtimes` (default `/usr/bin/quickshell`; a change applies to new connections) | `desktop.read`, `desktop.act`, `overlay.manage`, `component.register`, `action.invoke` |
 | anything else of the same user | | `desktop.read` |
 
 Quickshell runs any QML it is given, so recognizing it by executable grants those

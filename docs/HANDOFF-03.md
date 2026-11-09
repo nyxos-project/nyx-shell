@@ -61,16 +61,15 @@ implement its own mutual exclusion.
 
 ## Open items
 
-- `Panel1` has no close signal, so Shell Core asks `IsOpen` when a client looks. A
-  `Closed(s id)` signal in nyx-core's `panel.rs` would make it exact until the panels
-  move.
-- Refresh rate and runtime monitor geometry belong in `nyx-desktop`'s model; Shell Core
-  reads them itself for now.
+- Shell Core follows the GTK panels' open state through their layer surfaces
+  (`nyx-desktop`'s `layers`), exactly and without changes to them; `Panel1` stays only
+  for announcing and toggling until the panels move.
+- Components still on their own `nyx-desktop` watcher get refresh rates, open layers and
+  the monitors hook by moving their nyx-core pin to `a93881d` or later.
 - Theme events come from Theme Engine 2.0's snapshot. The opt-in `palette` feature
   (GTK, for machines without the engine) can go once every NyxOS session runs
   `nyx-themed`. The `Theme` singleton could also move onto the engine's own
   `Nyx.Theme` QML module, which reads the same snapshot.
-- `ipc.ui_runtimes` is read at start; changing it needs a restart.
 - Nyx Locker sets logind's `LockedHint` (nyx-greeter `ab65ecd`, shipped by nyx-packages
   `f15fd58`), and the hyprlock fallback clears it after unlocking (nyxos `e0690d3`).
 - Persistent overlays should be shown again by their component after a Shell Core

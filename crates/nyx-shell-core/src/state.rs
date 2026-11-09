@@ -1,32 +1,20 @@
 //! From `nyx_desktop`'s model to the wire's normalized desktop.
 
-use crate::compositor::MonitorExtra;
 use nyx_desktop::Desktop;
 use nyx_shell_proto::{Active, DesktopState, Fullscreen, MonitorState, WindowState, WorkspaceState};
-use std::collections::HashMap;
 
 /// Omarchy's workspace for minimized windows.
 const MINIMIZED: &str = "special:minimized";
 /// Longest title sent to clients, in characters.
 pub const MAX_TITLE: usize = 512;
 
-/// The normalized state of `d` as generation `generation`. `extras` holds each
-/// monitor's refresh rate and latest geometry by connector, read separately; they are
-/// never older than `d`'s monitors.
-pub fn normalize(d: &Desktop, generation: u64, extras: &HashMap<String, MonitorExtra>) -> DesktopState {
+/// The normalized state of `d` as generation `generation`.
+pub fn normalize(d: &Desktop, generation: u64) -> DesktopState {
     let monitor_name = |id: i64| d.monitors.iter().find(|m| m.id == id).map(|m| m.name.clone());
     let monitors = d
         .monitors
         .iter()
         .map(|m| {
-            let mut m = m.clone();
-            let extra = extras.get(&m.name);
-            if let Some(e) = extra.filter(|e| e.width > 0 && e.height > 0) {
-                (m.width, m.height, m.x, m.y, m.transform) = (e.width, e.height, e.x, e.y, e.transform);
-                if e.scale > 0.0 {
-                    m.scale = e.scale;
-                }
-            }
             let (logical_width, logical_height) = m.logical_size();
             MonitorState {
                 name: m.name.clone(),
@@ -40,7 +28,7 @@ pub fn normalize(d: &Desktop, generation: u64, extras: &HashMap<String, MonitorE
                 logical_height,
                 scale: m.scale,
                 transform: m.transform,
-                refresh_rate: extra.map(|e| e.refresh_rate).filter(|r| *r > 0.0),
+                refresh_rate: (m.refresh_rate > 0.0).then_some(m.refresh_rate),
                 focused: m.focused,
                 enabled: !m.disabled,
                 is_virtual: m.is_virtual(),
@@ -134,6 +122,7 @@ pub(crate) mod tests {
                 y: 0,
                 scale: 1.6,
                 transform: 0,
+                refresh_rate: 120.0,
                 focused: true,
                 disabled: false,
                 active_workspace: 1,
@@ -153,6 +142,7 @@ pub(crate) mod tests {
                 y: -20000,
                 scale: 1.0,
                 transform: 0,
+                refresh_rate: 0.0,
                 focused: false,
                 disabled: false,
                 active_workspace: 201,
@@ -195,9 +185,7 @@ pub(crate) mod tests {
 
     #[test]
     fn normalizes() {
-        let mut extras = HashMap::new();
-        extras.insert("eDP-2".to_string(), MonitorExtra { refresh_rate: 120.0, width: 2560, height: 1600, x: 0, y: 0, scale: 1.6, transform: 0 });
-        let s = normalize(&desktop(), 7, &extras);
+        let s = normalize(&desktop(), 7);
         assert_eq!(s.generation, 7);
         let laptop = s.monitor("eDP-2").unwrap();
         assert_eq!((laptop.logical_width, laptop.logical_height), (1600, 1000));
@@ -219,20 +207,11 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn geometry_changed_without_an_event() {
-        let mut extras = HashMap::new();
-        extras.insert("HEADLESS-20".to_string(), MonitorExtra { refresh_rate: 60.0, width: 1920, height: 1080, x: -20000, y: -20000, scale: 1.6, transform: 0 });
-        let m = normalize(&desktop(), 1, &extras).monitors.into_iter().find(|m| m.name == "HEADLESS-20").unwrap();
-        assert_eq!((m.width, m.height, m.scale), (1920, 1080, 1.6));
-        assert_eq!((m.logical_width, m.logical_height), (1200, 675));
-    }
-
-    #[test]
     fn events_become_small_deltas() {
         let mut d = desktop();
-        let old = normalize(&d, 1, &HashMap::new());
+        let old = normalize(&d, 1);
         d.apply(&Event::parse("activewindowv2>>b2"));
-        let new = normalize(&d, 2, &HashMap::new());
+        let new = normalize(&d, 2);
         let delta = new.delta_from(&old);
         assert!(delta.monitors.is_empty() && delta.workspaces.is_empty());
         assert_eq!(delta.windows.upsert.len(), 2, "the old and the new focused window");
@@ -245,6 +224,6 @@ pub(crate) mod tests {
         assert_eq!(clean(&"x".repeat(600), MAX_TITLE).chars().count(), 512);
         let mut d = desktop();
         d.windows[0].title = "evil\u{0}title".into();
-        assert_eq!(normalize(&d, 1, &HashMap::new()).windows[0].title, "eviltitle");
+        assert_eq!(normalize(&d, 1).windows[0].title, "eviltitle");
     }
 }

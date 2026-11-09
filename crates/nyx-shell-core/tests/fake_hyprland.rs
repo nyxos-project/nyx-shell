@@ -24,6 +24,7 @@ fn world() -> World {
         workspaces: vec![workspace(1, "eDP-1")],
         clients: vec![client("a1", "firefox", 1, 0), client("b2", "kitty", 1, 1)],
         active: "a1".into(),
+        layers: vec![],
     }
 }
 
@@ -141,10 +142,19 @@ fn end_to_end() {
         w.monitors[0]["height"] = json!(1440);
         w.monitors[0]["scale"] = json!(1.25);
     });
-    fake.send("custom>>nyx-shell-monitors\n");
+    fake.send("custom>>nyx-monitors\n");
     c.wait("DesktopChanged", |b| {
         b["monitors"]["upsert"].as_array().is_some_and(|a| a.iter().any(|m| m["name"] == "eDP-1" && m["width"] == 2560 && m["logical_width"] == 2048))
     });
+
+    // A GTK panel shows and hides: Shell Core follows its layer surface.
+    let mut panels = Client::connect(&socket);
+    panels.call("SubscribeOverlayState", json!({})).unwrap();
+    fake.send("openlayer>>nyx-control-center\nopenlayer>>nyx-control-center-catcher\n");
+    panels.wait("OverlayChanged", |b| b["overlay"]["id"] == "control-center" && b["overlay"]["visible"] == true);
+    fake.send("closelayer>>nyx-control-center-catcher\ncloselayer>>nyx-control-center\n");
+    panels.wait("OverlayChanged", |b| b["overlay"]["id"] == "control-center" && b["overlay"]["visible"] == false);
+    drop(panels);
 
     // Window and workspace actions reach Hyprland, checked against the state.
     c.call("RequestWindowAction", json!({"window": "c3", "action": "focus"})).unwrap();

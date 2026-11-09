@@ -34,6 +34,7 @@ fn rapid_workspace_switches() {
             workspaces: vec![workspace(1, "eDP-1"), workspace(2, "eDP-1")],
             clients: vec![client("a1", "firefox", 1, 0), client("b2", "kitty", 2, 1)],
             active: "a1".into(),
+            layers: vec![],
         },
     );
     let root = tmp.path();
