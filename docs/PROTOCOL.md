@@ -239,6 +239,8 @@ Both reply `{}` once Hyprland accepted the dispatch, `read_only` in read-only mo
 
 `visible` is what the surface should do. `requested` is what was asked. When they
 differ, `reason` says why: `locked`, `fullscreen`. `monitor` is `null` for `all`.
+A pinned overlay's state also has `pin`: `{"size":[360,280],"at":[908,42]}`, its box in
+logical pixels from its monitor's top-left, where the surface draws.
 
 - `RegisterOverlay` [overlay.manage] `{policy}` → `{overlay}`. Owned by this connection;
   removed when it disconnects. Registering an id another live connection owns is
@@ -248,6 +250,14 @@ differ, `reason` says why: `locked`, `fullscreen`. `monitor` is `null` for `all`
   group. `locked` while locked; `invalid` for `block` over fullscreen.
 - `HideOverlay` [overlay.manage] `{id}` → `{overlay}`.
 - `ToggleOverlay` [overlay.manage] `{id}` → `{overlay}`.
+- `PinOverlay` [overlay.manage] `{id, pinned, size?, monitor?}` → `{overlay}`. Pins a
+  `persistent` overlay (`size` [w, h], 160×100 to 800×900; `monitor` as for
+  `ShowOverlay`): it shows and stays until unpinned, other overlays of its group showing
+  leave it alone, and Shell Core lays the pinned overlays of each monitor out down the
+  right edge of its usable area, 12 px in and 10 px apart, in the order they were
+  pinned, a new column to the left when one is full. `invalid` when it doesn't fit, for
+  another category, or for `all`; `locked` while locked. `pinned: false` unpins and
+  hides it; the rest move up. When the monitor goes away, it moves to the active one.
 - `GetOverlayState` [desktop.read] → `{overlays}`.
 - `SubscribeOverlayState` [desktop.read] → `{seq, overlays}`.
 

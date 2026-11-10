@@ -133,6 +133,11 @@ Rules (`overlay.rs`):
 - When an overlay's owner disconnects, its overlays are removed, so no surface is left
   orphaned.
 - When an overlay's monitor goes away it moves to the active monitor.
+- **Pinned overlays** (`PinOverlay`, persistent only, such as Glimpse's pinned panels)
+  stay until unpinned and aren't hidden by their group. Shell Core places them: down
+  the right edge of their monitor's usable area in pin order, laid out again when the
+  monitor's size or reserved area changes. They take the keyboard only on demand
+  (clicked), restore no focus, and follow the fullscreen and lock rules.
 - **`Panel1` bridge:** Shell Core listens for `Opened(s id)`. A GTK panel opening hides
   Shell Core overlays in its group. A Shell Core overlay opening in group `panels` emits
   `Opened("nyx-shell:ID")`, which the GTK panels already obey. Whether a panel is open

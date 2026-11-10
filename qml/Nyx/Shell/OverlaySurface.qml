@@ -23,6 +23,9 @@ PanelWindow {
 
     default property alias content: body.data
 
+    // After each successful registration (Shell Core started again included).
+    signal registered
+
     readonly property var overlayState: ShellCore.overlay(overlayId)
     readonly property bool shown: overlayState !== null && overlayState.visible
     readonly property string pinnedScreen: Quickshell.env("NYX_SHELL_SCREEN") || ""
@@ -49,8 +52,10 @@ PanelWindow {
         ShellCore.request("RegisterOverlay", { policy: policy() }, (ok, err) => {
             if (err)
                 console.warn("nyx-shell:", overlayId, "not registered:", err.code, err.msg);
-            else
+            else {
                 ShellCore._merge(ok, null);
+                surface.registered();
+            }
         });
     }
 

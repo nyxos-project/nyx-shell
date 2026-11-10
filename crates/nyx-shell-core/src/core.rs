@@ -344,6 +344,7 @@ impl Core {
             }
             Op::HideOverlay { id: overlay } => self.overlay_op(|o, d, l| o.hide(&overlay, d, l), &overlay),
             Op::ToggleOverlay { id: overlay } => self.overlay_op(|o, d, l| o.toggle(&overlay, d, l), &overlay),
+            Op::PinOverlay { id: overlay, pinned, size, monitor } => self.overlay_op(|o, d, l| o.pin(&overlay, pinned, size, monitor, d, l), &overlay),
             Op::GetOverlayState => Ok(json!({ "overlays": self.overlays.all() })),
             Op::SubscribeOverlayState => {
                 let all = to_value(&self.overlays.all());

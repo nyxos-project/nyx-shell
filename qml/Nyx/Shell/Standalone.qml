@@ -41,6 +41,10 @@ QtObject {
             return reply({});
         case "ShowOverlay":
         case "HideOverlay":
+        case "PinOverlay": {
+            const err = pin(b.id, b.pinned === true, b.size || null, b.monitor || null);
+            return err ? reply(null, err) : reply({ overlay: overlayStates[b.id] });
+        }
         case "ToggleOverlay": {
             const cur = overlayStates[b.id];
             if (!cur)
@@ -111,6 +115,8 @@ QtObject {
             s.requested = cur.requested;
             s.monitor = cur.monitor;
             s.revision = cur.revision;
+            if (cur.pin)
+                s.pin = cur.pin;
         }
         putOverlay(evaluate(s));
         return overlayStates[p.id];
@@ -171,7 +177,7 @@ QtObject {
                 return { code: "invalid", msg: "a fullscreen window is on " + mon };
             if (cur.category !== "passive" && cur.group) {
                 for (const other of Object.values(overlayStates)) {
-                    if (other.id !== id && other.group === cur.group && other.requested)
+                    if (other.id !== id && other.group === cur.group && other.requested && !other.pin)
                         putOverlay(evaluate(Object.assign({}, other, { requested: false, revision: other.revision + 1 })));
                 }
             }
@@ -182,13 +188,108 @@ QtObject {
         return null;
     }
 
-    // Fullscreen windows coming and going change what may be shown.
+    // Fullscreen windows coming and going change what may be shown; monitors coming,
+    // going and changing move pinned overlays.
     function reevaluate() {
+        const names = core.desktop.monitors.map(m => m.name);
+        for (const s of Object.values(overlayStates)) {
+            if (s.pin && s.monitor && names.length > 0 && names.indexOf(s.monitor) < 0)
+                putOverlay(Object.assign({}, s, { monitor: placementMonitor(s, null), revision: s.revision + 1 }));
+        }
+        const pinnedOn = {};
+        for (const s of Object.values(overlayStates)) {
+            if (s.pin && s.requested && s.monitor)
+                pinnedOn[s.monitor] = true;
+        }
+        for (const m of Object.keys(pinnedOn))
+            layOut(m, true);
         for (const s of Object.values(overlayStates)) {
             const n = evaluate(s);
             if (n.visible !== s.visible || n.reason !== s.reason)
                 putOverlay(Object.assign(n, { revision: s.revision + 1 }));
         }
+    }
+
+    // Pinned overlays, as Shell Core's overlay.rs lays them out: down the right edge of
+    // the monitor's usable area in the order they were pinned, a new column to the left
+    // when one is full, 12 px from the edges and 10 px apart.
+    readonly property int pinMargin: 12
+    readonly property int pinGap: 10
+    property int _pins: 0
+    property var _pinOrder: ({})
+
+    function spots(m, sizes, crowd) {
+        const r = m.reserved || [0, 0, 0, 0];
+        const left = r[0] + pinMargin, top = r[1] + pinMargin;
+        const right = m.logical_width - r[2] - pinMargin, bottom = m.logical_height - r[3] - pinMargin;
+        let edge = right, y = top, column = 0;
+        const out = [];
+        for (const s of sizes) {
+            if (y > top && y + s[1] > bottom) {
+                edge -= column + pinGap;
+                y = top;
+                column = 0;
+            }
+            const x = edge - s[0];
+            if (!crowd && (x < left || y + s[1] > bottom))
+                return null;
+            out.push([Math.max(x, left), y]);
+            y += s[1] + pinGap;
+            column = Math.max(column, s[0]);
+        }
+        return out;
+    }
+
+    // Place the pinned overlays on `name` again; false when they don't fit (unless crowd).
+    function layOut(name, crowd) {
+        const m = core.desktop.monitors.find(x => x.name === name);
+        if (!m)
+            return true;
+        const pinned = Object.values(overlayStates).filter(s => s.pin && s.requested && s.monitor === name).sort((a, b) => (_pinOrder[a.id] || 0) - (_pinOrder[b.id] || 0));
+        const at = spots(m, pinned.map(s => s.pin.size), crowd);
+        if (!at)
+            return false;
+        pinned.forEach((s, i) => {
+            if (s.pin.at[0] !== at[i][0] || s.pin.at[1] !== at[i][1])
+                putOverlay(Object.assign({}, s, { pin: { size: s.pin.size, at: at[i] }, revision: s.revision + 1 }));
+        });
+        return true;
+    }
+
+    function pin(id, pinned, size, monitor) {
+        const cur = overlayStates[id];
+        if (!cur)
+            return { code: "not_found", msg: "no overlay " + id };
+        if (cur.category !== "persistent")
+            return { code: "invalid", msg: "only persistent overlays are pinned; " + id + " is " + cur.category };
+        const was = cur.pin ? cur.monitor : null;
+        if (!pinned) {
+            const n = Object.assign({}, cur, { requested: false, revision: cur.revision + 1 });
+            delete n.pin;
+            putOverlay(evaluate(n));
+            if (was)
+                layOut(was, true);
+            return null;
+        }
+        if (!size || size[0] < 160 || size[1] < 100 || size[0] > 800 || size[1] > 900)
+            return { code: "invalid", msg: "a pinned overlay is 160×100 to 800×900" };
+        const mon = placementMonitor(cur, monitor);
+        if (!mon)
+            return { code: "invalid", msg: id + " pins on one monitor, not all" };
+        if (!cur.pin || was !== mon) {
+            _pins += 1;
+            const o = Object.assign({}, _pinOrder);
+            o[id] = _pins;
+            _pinOrder = o;
+        }
+        putOverlay(evaluate(Object.assign({}, cur, { requested: true, monitor: mon, pin: { size: [size[0], size[1]], at: cur.pin ? cur.pin.at : [0, 0] }, revision: cur.revision + 1 })));
+        if (!layOut(mon, false)) {
+            putOverlay(cur);
+            return { code: "invalid", msg: "there's no room for another pinned panel on " + mon };
+        }
+        if (was && was !== mon)
+            layOut(was, true);
+        return null;
     }
 
     // Actions on the compositor --------------------------------------------------

@@ -26,7 +26,7 @@ pub use frame::{
     Capability, ErrorBody, ErrorCode, Event, EventFrame, Hello, HelloReply, Op, RawRequest, Reply, Topic, MAX_LINE,
     MIN_PROTOCOL_VERSION, PROTOCOL_VERSION, WindowAction, WindowActionKind, WorkspaceAction,
 };
-pub use overlay::{Category, FullscreenRule, Keyboard, OverlayPolicy, OverlayState, Placement};
+pub use overlay::{Category, FullscreenRule, Keyboard, OverlayPolicy, OverlayState, Pin, Placement};
 pub use session::{CompositorStatus, ConfigSummary, IpcStatus, OverlaySummary, SessionState, SessionStatus, ThemeSummary};
 pub use theme::ThemeState;
 

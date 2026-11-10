@@ -503,3 +503,22 @@ fn virtual_monitors_come_back_then_are_remembered() {
     });
     assert_eq!(saved.unwrap().active["S|O|H"], vec![2, 3]);
 }
+
+#[test]
+fn pinning_goes_through_the_overlay_registry() {
+    let mut h = harness(false);
+    h.connect(1, ui("quickshell"), 32);
+    h.desktop(crate::state::tests::desktop());
+    let policy = OverlayPolicy { keyboard: nyx_shell_proto::Keyboard::OnDemand, ..OverlayPolicy::new("glimpse.pin.music", nyx_shell_proto::Category::Persistent) };
+    h.call(1, Op::RegisterOverlay { policy }).unwrap();
+    h.call(1, Op::SubscribeOverlayState).unwrap();
+    h.events(1);
+    let ok = h.call(1, Op::PinOverlay { id: "glimpse.pin.music".into(), pinned: true, size: Some([360, 260]), monitor: None }).unwrap();
+    assert_eq!(ok["overlay"]["visible"], true);
+    assert_eq!(ok["overlay"]["pin"]["size"], json!([360, 260]));
+    assert!(h.events(1).iter().any(|e| e.ev == "OverlayChanged"));
+    assert!(h.core.take_effects().iter().all(|e| !matches!(e, Effect::Dispatch { .. })), "pinning moves no focus");
+    let ok = h.call(1, Op::PinOverlay { id: "glimpse.pin.music".into(), pinned: false, size: None, monitor: None }).unwrap();
+    assert_eq!(ok["overlay"]["visible"], false);
+    assert!(ok["overlay"].get("pin").is_none());
+}

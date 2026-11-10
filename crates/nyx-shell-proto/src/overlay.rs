@@ -182,6 +182,18 @@ pub enum HiddenReason {
     Fullscreen,
 }
 
+/// A pinned overlay's box: its size and its top-left corner, in logical pixels from
+/// its monitor's top-left. Shell Core lays pinned overlays out; surfaces follow.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Pin {
+    pub size: [u32; 2],
+    pub at: [i32; 2],
+}
+
+/// The smallest and largest pinned overlay, logical pixels.
+pub const PIN_MIN: [u32; 2] = [160, 100];
+pub const PIN_MAX: [u32; 2] = [800, 900];
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct OverlayState {
     pub id: String,
@@ -201,6 +213,9 @@ pub struct OverlayState {
     pub reason: Option<HiddenReason>,
     /// Bumped on every change, so a surface can ignore stale instructions.
     pub revision: u64,
+    /// Set while pinned (`PinOverlay`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pin: Option<Pin>,
 }
 
 #[cfg(test)]

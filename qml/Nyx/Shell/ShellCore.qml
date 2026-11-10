@@ -88,6 +88,20 @@ Singleton {
     function toggleOverlay(id) {
         request("ToggleOverlay", { id: id }, _merge);
     }
+    // Pin a persistent overlay at `size` ([w, h]): Shell Core shows it and places it.
+    function pinOverlay(id, size, monitor, callback) {
+        const b = { id: id, pinned: true, size: size };
+        if (monitor)
+            b.monitor = monitor;
+        request("PinOverlay", b, (ok, err) => {
+            _merge(ok, err);
+            if (callback)
+                callback(ok, err);
+        });
+    }
+    function unpinOverlay(id) {
+        request("PinOverlay", { id: id, pinned: false }, _merge);
+    }
     function invoke(action, args) {
         request("InvokeAction", args ? { id: action, args: args } : { id: action }, null);
     }

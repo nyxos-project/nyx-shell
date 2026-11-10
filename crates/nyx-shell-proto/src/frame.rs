@@ -129,6 +129,16 @@ pub enum Op {
     ToggleOverlay {
         id: String,
     },
+    /// Pin a persistent overlay (shown, laid out by Shell Core, left alone by its
+    /// group), or unpin it (hidden).
+    PinOverlay {
+        id: String,
+        pinned: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        size: Option<[u32; 2]>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        monitor: Option<String>,
+    },
     GetOverlayState,
     SubscribeOverlayState,
     RegisterComponent {
@@ -191,6 +201,7 @@ impl Op {
         "ShowOverlay",
         "HideOverlay",
         "ToggleOverlay",
+        "PinOverlay",
         "GetOverlayState",
         "SubscribeOverlayState",
         "RegisterComponent",
@@ -258,7 +269,7 @@ impl Op {
             | GetThemeGeneration
             | SubscribeThemeChanges => Capability::DesktopRead,
             RequestWorkspaceAction(_) | RequestWindowAction(_) => Capability::DesktopAct,
-            RegisterOverlay { .. } | UnregisterOverlay { .. } | ShowOverlay { .. } | HideOverlay { .. } | ToggleOverlay { .. } => {
+            RegisterOverlay { .. } | UnregisterOverlay { .. } | ShowOverlay { .. } | HideOverlay { .. } | ToggleOverlay { .. } | PinOverlay { .. } => {
                 Capability::OverlayManage
             }
             RegisterComponent { .. } | ReportReady { .. } | ReportHealth { .. } => Capability::ComponentRegister,

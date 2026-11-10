@@ -5,6 +5,7 @@ singleton Theme 1.0 Theme.qml
 singleton Motion 1.0 Motion.qml
 ShellComponent 1.0 ShellComponent.qml
 OverlaySurface 1.0 OverlaySurface.qml
+PinnedSurface 1.0 PinnedSurface.qml
 MonitorSurfaces 1.0 MonitorSurfaces.qml
 KeyboardScope 1.0 KeyboardScope.qml
 LoadingState 1.0 LoadingState.qml
