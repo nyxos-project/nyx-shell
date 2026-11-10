@@ -39,12 +39,12 @@ QtObject {
         case "UnregisterOverlay":
             unregisterOverlay(b.id);
             return reply({});
-        case "ShowOverlay":
-        case "HideOverlay":
         case "PinOverlay": {
             const err = pin(b.id, b.pinned === true, b.size || null, b.monitor || null);
             return err ? reply(null, err) : reply({ overlay: overlayStates[b.id] });
         }
+        case "ShowOverlay":
+        case "HideOverlay":
         case "ToggleOverlay": {
             const cur = overlayStates[b.id];
             if (!cur)
@@ -123,12 +123,15 @@ QtObject {
     }
 
     function unregisterOverlay(id) {
-        if (!overlayStates[id])
+        const cur = overlayStates[id];
+        if (!cur)
             return;
         const o = Object.assign({}, overlayStates);
         delete o[id];
         overlayStates = o;
         core._overlayRemoved(id);
+        if (cur.pin && cur.monitor)
+            layOut(cur.monitor, true);
     }
 
     function putOverlay(s) {

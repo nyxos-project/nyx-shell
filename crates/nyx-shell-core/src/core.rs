@@ -325,10 +325,15 @@ impl Core {
             }
             Op::UnregisterOverlay { id: overlay } => {
                 let before = self.overlays.any_restoring_visible();
-                match self.overlays.unregister(&overlay, client) {
-                    Ok(()) => {
+                match self.overlays.unregister(&overlay, client, &self.desktop, self.locked) {
+                    Ok(moved) => {
                         self.after_overlays(before, &[]);
                         self.emit(Event::OverlayRemoved { id: overlay });
+                        for c in moved {
+                            if let Change::Changed(s) = c {
+                                self.emit(Event::OverlayChanged { overlay: s });
+                            }
+                        }
                         self.actions_changed();
                         Ok(json!({}))
                     }
@@ -764,7 +769,7 @@ impl Core {
             return;
         }
         let before = self.overlays.any_restoring_visible();
-        let changes = self.overlays.client_gone(client);
+        let changes = self.overlays.client_gone(client, &self.desktop, self.locked);
         self.apply_overlay_changes(before, changes);
         let ids = self.components.client_gone(client, Instant::now());
         if !ids.is_empty() {

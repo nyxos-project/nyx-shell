@@ -19,7 +19,8 @@ OverlaySurface {
     signal refused(string message)
 
     function pin() {
-        ShellCore.pinOverlay(overlayId, pinSize, pinMonitor, (ok, err) => {
+        // A surface held to one output (NYX_SHELL_SCREEN) is laid out for that one.
+        ShellCore.pinOverlay(overlayId, pinSize, pinnedScreen || pinMonitor, (ok, err) => {
             if (err)
                 pinned.refused(err.msg);
         });
@@ -40,5 +41,13 @@ OverlaySurface {
     implicitWidth: box ? box.size[0] : pinSize[0]
     implicitHeight: box ? box.size[1] : pinSize[1]
 
-    onRegistered: pin()
+    // The id it registered under: what it was made from may be gone when it goes.
+    property string _registered: ""
+    onRegistered: {
+        _registered = overlayId;
+        pin();
+    }
+    // Gone (its panel unpinned, its component unloaded): the others move up.
+    Component.onDestruction: if (_registered !== "")
+        ShellCore.request("UnregisterOverlay", { id: _registered }, null)
 }

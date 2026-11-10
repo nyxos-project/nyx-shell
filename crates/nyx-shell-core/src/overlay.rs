@@ -160,13 +160,15 @@ impl Overlays {
         Ok(self.insert(policy, owner).state())
     }
 
-    pub fn unregister(&mut self, id: &str, client: ClientId) -> Result<(), ErrorBody> {
+    /// Returns the pinned overlays that moved into its place.
+    pub fn unregister(&mut self, id: &str, client: ClientId, desktop: &DesktopState, locked: bool) -> Result<Vec<Change>, ErrorBody> {
         let e = self.entries.get(id).ok_or_else(|| err(ErrorCode::NotFound, format!("no overlay {id}")))?;
         if e.owner.client() != Some(client) {
             return Err(err(ErrorCode::Forbidden, format!("{id} isn't yours")));
         }
+        let pinned_on = e.monitor.clone().filter(|_| e.pin.is_some());
         self.entries.remove(id);
-        Ok(())
+        Ok(pinned_on.and_then(|m| self.lay_out(&m, desktop, locked, true)).unwrap_or_default())
     }
 
     /// Ask for `id` to show. `monitor` is where to put it when its placement needs a
@@ -390,15 +392,26 @@ impl Overlays {
         changes
     }
 
-    /// A client went away: its overlays go too.
-    pub fn client_gone(&mut self, client: ClientId) -> Vec<Change> {
-        let gone: Vec<String> = self.entries.values().filter(|e| e.owner.client() == Some(client)).map(|e| e.policy.id.clone()).collect();
-        gone.into_iter()
-            .map(|id| {
-                self.entries.remove(&id);
-                Change::Removed(id)
-            })
-            .collect()
+    /// A client went away: its overlays go too, and pinned ones left on their monitors
+    /// move up.
+    pub fn client_gone(&mut self, client: ClientId, desktop: &DesktopState, locked: bool) -> Vec<Change> {
+        let gone: Vec<(String, Option<String>)> = self
+            .entries
+            .values()
+            .filter(|e| e.owner.client() == Some(client))
+            .map(|e| (e.policy.id.clone(), e.monitor.clone().filter(|_| e.pin.is_some())))
+            .collect();
+        let mut changes = Vec::new();
+        let mut monitors = std::collections::BTreeSet::new();
+        for (id, pinned_on) in gone {
+            self.entries.remove(&id);
+            monitors.extend(pinned_on);
+            changes.push(Change::Removed(id));
+        }
+        for m in monitors {
+            changes.extend(self.lay_out(&m, desktop, locked, true).unwrap_or_default());
+        }
+        changes
     }
 
     /// New `[overlays.ID]` overrides from the settings.
@@ -604,9 +617,9 @@ mod tests {
         assert_eq!(o.register(transient("a"), client(2)).unwrap_err().code, ErrorCode::Conflict);
         o.register(transient("a"), client(1)).unwrap();
         assert_eq!(o.register(transient("control-center"), client(1)).unwrap_err().code, ErrorCode::Conflict);
-        assert_eq!(o.unregister("a", 2).unwrap_err().code, ErrorCode::Forbidden);
+        assert_eq!(o.unregister("a", 2, &d, false).unwrap_err().code, ErrorCode::Forbidden);
         o.show("a", None, &d, false).unwrap();
-        assert_eq!(o.client_gone(1), vec![Change::Removed("a".into())]);
+        assert_eq!(o.client_gone(1, &d, false), vec![Change::Removed("a".into())]);
         assert!(o.get("a").is_none());
         let mut secure = OverlayPolicy::new("fake-lock", Category::SecureExternal);
         secure.keyboard = Keyboard::None;
@@ -678,6 +691,26 @@ mod tests {
         assert_eq!(at(&o, "b"), [1280 - 12 - 300, 42]);
         assert_eq!(at(&o, "c"), [1280 - 12 - 300, 42 + 310]);
         assert_eq!(changes.len(), 3);
+    }
+
+    #[test]
+    fn pinned_overlays_move_up_when_one_goes() {
+        let mut d = desktop();
+        d.monitors[0].logical_width = 1280;
+        d.monitors[0].logical_height = 800;
+        let mut o = Overlays::new();
+        o.register(pinnable("a"), client(1)).unwrap();
+        o.register(pinnable("b"), client(2)).unwrap();
+        o.register(pinnable("c"), client(1)).unwrap();
+        for id in ["a", "b", "c"] {
+            o.pin(id, true, Some([300, 200]), None, &d, false).unwrap();
+        }
+        let moved = o.unregister("a", 1, &d, false).unwrap();
+        assert_eq!(moved.len(), 2);
+        assert_eq!(at(&o, "b"), [1280 - 12 - 300, 12]);
+        let changes = o.client_gone(2, &d, false);
+        assert!(changes.contains(&Change::Removed("b".into())));
+        assert_eq!(at(&o, "c"), [1280 - 12 - 300, 12]);
     }
 
     #[test]
