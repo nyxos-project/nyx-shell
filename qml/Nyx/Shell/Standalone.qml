@@ -301,6 +301,52 @@ QtObject {
         return String(a || "").replace(/^0x/, "").toLowerCase();
     }
 
+    // Omarchy gives every monitor its own block of ten workspaces
+    // (default.hypr.monitor-workspaces) and keeps which block is whose in a state file:
+    // block b holds 10b + 1 to 10b + 10. null where Omarchy doesn't number them.
+    property var omarchyBlocks: null
+    property FileView _omarchyBlocksFile: FileView {
+        path: (Quickshell.env("XDG_STATE_HOME") || ((Quickshell.env("HOME") || "") + "/.local/state")) + "/omarchy/monitor-workspaces"
+        watchChanges: true
+        printErrors: false
+        onFileChanged: reload()
+        onLoaded: {
+            local.omarchyBlocks = local._parseBlocks(text());
+            if (local.loaded)
+                local.build();
+        }
+        onLoadFailed: local.omarchyBlocks = null
+    }
+    function _parseBlocks(t) {
+        const blocks = {};
+        let any = false;
+        for (const line of String(t).split("\n")) {
+            const f = line.split("\t");
+            if (f.length >= 2 && f[1] !== "" && /^[0-9]+$/.test(f[0])) {
+                blocks[f[1]] = parseInt(f[0]);
+                any = true;
+            }
+        }
+        return any ? blocks : null;
+    }
+    // The number a user sees for a workspace (1 to 10), or null for an internal one, as
+    // nyx-desktop's Desktop::workspace_number: 1 to 10; a virtual monitor's own (base + n,
+    // named n); under Omarchy every monitor's block. Headless outputs stay internal.
+    function _number(w, name, special) {
+        if (special || !(w.id > 0))
+            return null;
+        const n = w.id % 100;
+        const region = (w.id > 100 && n >= 1 && n <= 10 && name === String(n)) ? n : null;
+        if ((w.monitor || "").indexOf("HEADLESS-") === 0)
+            return w.id <= 10 ? w.id : region;
+        if (omarchyBlocks) {
+            const last = Math.max(0, ...Object.values(omarchyBlocks));
+            if (w.id <= (last + 1) * 10)
+                return (w.id - 1) % 10 + 1;
+        }
+        return w.id <= 10 ? w.id : region;
+    }
+
     property var _mons: []
     property var _wss: []
     property var _clients: []
@@ -368,19 +414,33 @@ QtObject {
                 virtual: m.name.indexOf("HEADLESS-") === 0,
                 active_workspace: m.activeWorkspace ? m.activeWorkspace.id : 0,
                 special_workspace: (m.specialWorkspace && m.specialWorkspace.id) ? m.specialWorkspace.id : null,
-                reserved: m.reserved || [0, 0, 0, 0]
+                reserved: m.reserved || [0, 0, 0, 0],
+                region: (m.virtual && m.virtual.role === "region") ? {
+                    physical: m.virtual.host,
+                    physical_id: ((m.virtual.hostMake || "").trim() === "" && (m.virtual.hostModel || "").trim() === "") ? m.virtual.host
+                        : (m.virtual.hostMake || "").trim() + "|" + (m.virtual.hostModel || "").trim() + "|" + (m.virtual.hostSerial || "").trim(),
+                    index: m.virtual.index,
+                    count: m.virtual.count,
+                    workspace_base: m.virtual.workspaceBase
+                } : undefined
             };
         });
-        const workspaces = wss.map(w => ({
-            id: w.id,
-            name: w.name || String(w.id),
-            monitor: w.monitor || "",
-            active: !!shown[w.id],
-            special: String(w.name || "").indexOf("special:") === 0,
-            user: w.id >= 1 && w.id <= 10,
-            has_fullscreen: !!w.hasfullscreen,
-            windows: windows.filter(x => x.workspace === w.id).map(x => x.address)
-        })).sort((a, b) => a.id - b.id);
+        const workspaces = wss.map(w => {
+            const name = w.name || String(w.id);
+            const special = String(w.name || "").indexOf("special:") === 0;
+            const number = local._number(w, name, special);
+            return {
+                id: w.id,
+                name: name,
+                monitor: w.monitor || "",
+                active: !!shown[w.id],
+                special: special,
+                user: number !== null,
+                number: number === null ? undefined : number,
+                has_fullscreen: !!w.hasfullscreen,
+                windows: windows.filter(x => x.workspace === w.id).map(x => x.address)
+            };
+        }).sort((a, b) => a.id - b.id);
         const fm = monitors.find(m => m.focused);
         const active = {
             monitor: fm ? fm.name : (monitors.length ? monitors[0].name : null),
