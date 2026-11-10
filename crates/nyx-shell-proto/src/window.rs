@@ -30,16 +30,18 @@ pub fn tag(c: Controls) -> String {
 }
 
 /// How `w`'s controls are presented: a rule for its app id or class, the built-in
-/// rules, a Nyx app's own header, or nothing known (the compositor decides).
+/// rules, a Nyx app's own header, or nothing known (the compositor decides). App ids
+/// match without regard to case, as window classes vary in it (`Alacritty`).
 pub fn controls(w: &WindowState, cfg: &WindowControlsConfig) -> Option<Controls> {
     if !cfg.enabled {
         return None;
     }
     let ids = [w.app_id.as_str(), w.initial_app_id.as_str()];
-    if let Some(c) = ids.iter().find_map(|id| cfg.apps.get(*id).and_then(|r| r.controls)) {
+    let rule = |id: &str| cfg.apps.iter().find(|(k, _)| k.eq_ignore_ascii_case(id)).and_then(|(_, r)| r.controls);
+    if let Some(c) = ids.iter().find_map(|id| rule(id)) {
         return Some(c);
     }
-    if let Some(c) = ids.iter().find_map(|id| BUILTIN.iter().find(|(a, _)| a == id).map(|(_, c)| *c)) {
+    if let Some(c) = ids.iter().find_map(|id| BUILTIN.iter().find(|(a, _)| a.eq_ignore_ascii_case(id)).map(|(_, c)| *c)) {
         return Some(c);
     }
     ids.iter().any(|id| id.starts_with(NYX_APP_PREFIX)).then_some(Controls::NativeNyx)
@@ -83,7 +85,7 @@ pub fn rules_lua(cfg: &WindowControlsConfig) -> String {
     let mut tagged: Vec<(&str, Controls)> = Vec::new();
     if cfg.enabled {
         for (id, c) in BUILTIN {
-            if !cfg.apps.get(*id).is_some_and(|r| r.controls.is_some()) {
+            if !cfg.apps.iter().any(|(k, r)| k.eq_ignore_ascii_case(id) && r.controls.is_some()) {
                 tagged.push((id, *c));
             }
         }
@@ -105,10 +107,10 @@ pub fn rules_lua(cfg: &WindowControlsConfig) -> String {
     out
 }
 
-/// An app id as an anchored Hyprland regex, written inside a Lua string. Ids are
-/// [`crate::config::valid_app_id`], so only `.` and `+` need escaping.
+/// An app id as an anchored Hyprland regex that ignores case, written inside a Lua
+/// string. Ids are [`crate::config::valid_app_id`], so only `.` and `+` need escaping.
 fn class_regex(id: &str) -> String {
-    let mut s = String::from("^");
+    let mut s = String::from("(?i)^");
     for ch in id.chars() {
         if ch == '.' || ch == '+' {
             s.push_str("\\\\");
@@ -141,6 +143,9 @@ mod tests {
         let mut renamed = win("Something");
         renamed.initial_app_id = "kitty".into();
         assert_eq!(controls(&renamed, &cfg), Some(Controls::ChromelessFloating), "the initial class counts too");
+        assert_eq!(controls(&win("alacritty"), &cfg), Some(Controls::ChromelessFloating), "classes match whatever their case");
+        cfg.apps.insert("Org.Gnome.Nautilus".into(), AppWindowRule { controls: Some(Controls::CustomHeaderbar), float: None });
+        assert_eq!(controls(&win("org.gnome.Nautilus"), &cfg), Some(Controls::CustomHeaderbar));
         cfg.enabled = false;
         assert_eq!(controls(&win("foot"), &cfg), None);
     }
@@ -180,17 +185,17 @@ mod tests {
         cfg.apps.insert("org.kde.dolphin".into(), AppWindowRule { controls: Some(Controls::CustomHeaderbar), float: Some(false) });
         cfg.apps.insert("g++".into(), AppWindowRule { controls: None, float: None });
         let lua = rules_lua(&cfg);
-        assert!(lua.contains("hl.window_rule({ match = { class = \"^foot$\" }, tag = \"+nyx-controls-chromeless-floating\" })"));
-        assert!(!lua.contains("^kitty$\" }, tag = \"+nyx-controls-chromeless"), "the app's own rule replaces the built-in one");
-        assert!(lua.contains("class = \"^kitty$\" }, tag = \"+nyx-controls-preserve-native\""));
-        assert!(lua.contains("class = \"^org\\\\.kde\\\\.dolphin$\" }, tag = \"+nyx-controls-custom-headerbar\""));
-        assert!(lua.contains("class = \"^kitty$\" }, float = true"));
+        assert!(lua.contains("hl.window_rule({ match = { class = \"(?i)^foot$\" }, tag = \"+nyx-controls-chromeless-floating\" })"));
+        assert!(!lua.contains("(?i)^kitty$\" }, tag = \"+nyx-controls-chromeless"), "the app's own rule replaces the built-in one");
+        assert!(lua.contains("class = \"(?i)^kitty$\" }, tag = \"+nyx-controls-preserve-native\""));
+        assert!(lua.contains("class = \"(?i)^org\\\\.kde\\\\.dolphin$\" }, tag = \"+nyx-controls-custom-headerbar\""));
+        assert!(lua.contains("class = \"(?i)^kitty$\" }, float = true"));
         assert!(lua.contains("dolphin$\" }, tile = true"));
         assert!(!lua.contains("g\\\\+\\\\+"), "no rule without a value");
         cfg.enabled = false;
         let off = rules_lua(&cfg);
         assert!(!off.contains("tag ="), "off: no presentations, preferences stay");
         assert!(off.contains("float = true"));
-        assert_eq!(class_regex("a+b.c"), "^a\\\\+b\\\\.c$");
+        assert_eq!(class_regex("a+b.c"), "(?i)^a\\\\+b\\\\.c$");
     }
 }
