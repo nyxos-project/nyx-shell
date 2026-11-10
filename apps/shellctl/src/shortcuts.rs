@@ -121,6 +121,10 @@ pub fn file_arg(args: &[&str]) -> Option<PathBuf> {
 /// back if Hyprland reports configuration errors.
 pub fn install(file: &Path, text: &str, reload: bool) -> Result<(), String> {
     let previous = std::fs::read(file).ok();
+    if previous.as_deref() == Some(text.as_bytes()) {
+        println!("{} is up to date", file.display());
+        return Ok(());
+    }
     write_atomic(file, text.as_bytes())?;
     if reload {
         let reloaded = Command::new("hyprctl").arg("reload").output().map_err(|e| format!("hyprctl reload: {e}"))?;

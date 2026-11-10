@@ -3,7 +3,7 @@
 
 mod shortcuts;
 
-use nyx_shell_proto::{ConfigState, EventFrame, Op, RawRequest, Reply, Topic, WindowAction, WindowActionKind};
+use nyx_shell_proto::{EventFrame, Op, RawRequest, Reply, Topic, WindowAction, WindowActionKind};
 use serde_json::{Value, json};
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
@@ -197,14 +197,46 @@ fn window_controls(args: &[&str]) -> Result<(), String> {
     if print == apply {
         return Err("give --print or --apply".into());
     }
-    let config: ConfigState = serde_json::from_value(Client::connect()?.call(&Op::GetShellConfig)?).map_err(|e| e.to_string())?;
-    let text = nyx_shell_proto::window::rules_lua(&config.config.window_controls);
+    let text = nyx_shell_proto::window::rules_lua(&window_controls_settings());
     if print {
         print!("{text}");
         return Ok(());
     }
     let file = shortcuts::file_arg(args).unwrap_or_else(|| shortcuts::hypr_file("nyx-window-controls.lua"));
     shortcuts::install(&file, &text, !args.contains(&"--no-reload"))
+}
+
+/// `[window_controls]` from the `shell` layers themselves (NyxOS's defaults, the
+/// administrator's, the user's): Hyprland applies the rules at its start, before Shell
+/// Core runs.
+fn window_controls_settings() -> nyx_shell_proto::WindowControlsConfig {
+    let user = std::env::var_os("XDG_CONFIG_HOME")
+        .map(std::path::PathBuf::from)
+        .filter(|p| p.is_absolute())
+        .unwrap_or_else(|| std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".config"))
+        .join("nyx/shell.toml");
+    let mut merged = toml::Table::new();
+    for path in [std::path::PathBuf::from("/etc/nyxos/defaults/shell.toml"), "/etc/nyxos/overrides/shell.toml".into(), user] {
+        if let Some(t) = std::fs::read_to_string(&path).ok().and_then(|s| s.parse::<toml::Table>().ok()) {
+            merge(&mut merged, t);
+        }
+    }
+    let (config, errors) = nyx_shell_proto::ShellConfig::from_table(&merged);
+    for e in errors.iter().filter(|e| e.starts_with("window_controls")) {
+        eprintln!("nyx-shellctl: {e}");
+    }
+    config.window_controls
+}
+
+fn merge(into: &mut toml::Table, from: toml::Table) {
+    for (k, v) in from {
+        match (into.get_mut(&k), v) {
+            (Some(toml::Value::Table(a)), toml::Value::Table(b)) => merge(a, b),
+            (_, v) => {
+                into.insert(k, v);
+            }
+        }
+    }
 }
 
 fn status(s: &Value) {
