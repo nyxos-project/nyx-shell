@@ -188,6 +188,9 @@ pub enum HiddenReason {
 pub struct Pin {
     pub size: [u32; 2],
     pub at: [i32; 2],
+    /// Put there by hand (`MovePinnedOverlay`), out of the stack.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub manual: bool,
 }
 
 /// The smallest and largest pinned overlay, logical pixels.

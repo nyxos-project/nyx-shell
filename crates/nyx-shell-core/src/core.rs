@@ -162,6 +162,7 @@ impl Core {
         let mut overlays = Overlays::new();
         let desktop = DesktopState::default();
         overlays.set_overrides(config.overlays.clone(), &desktop, false);
+        overlays.set_stack(config.pins.clone(), &desktop, false);
         let mut core = Core {
             session_id: o.session_id,
             started: now,
@@ -350,6 +351,7 @@ impl Core {
             Op::HideOverlay { id: overlay } => self.overlay_op(|o, d, l| o.hide(&overlay, d, l), &overlay),
             Op::ToggleOverlay { id: overlay } => self.overlay_op(|o, d, l| o.toggle(&overlay, d, l), &overlay),
             Op::PinOverlay { id: overlay, pinned, size, monitor } => self.overlay_op(|o, d, l| o.pin(&overlay, pinned, size, monitor, d, l), &overlay),
+            Op::MovePinnedOverlay { id: overlay, at } => self.overlay_op(|o, d, l| o.move_pin(&overlay, at, d, l), &overlay),
             Op::GetOverlayState => Ok(json!({ "overlays": self.overlays.all() })),
             Op::SubscribeOverlayState => {
                 let all = to_value(&self.overlays.all());
@@ -684,7 +686,8 @@ impl Core {
         let window_controls_changed = config.window_controls != self.config.config.window_controls;
         self.config = ConfigState { generation: self.config.generation + 1, config, errors };
         let before = self.overlays.any_restoring_visible();
-        let changes = self.overlays.set_overrides(self.config.config.overlays.clone(), &self.desktop, self.locked);
+        let mut changes = self.overlays.set_overrides(self.config.config.overlays.clone(), &self.desktop, self.locked);
+        changes.extend(self.overlays.set_stack(self.config.config.pins.clone(), &self.desktop, self.locked));
         self.apply_overlay_changes(before, changes);
         self.emit(Event::ConfigChanged { config: self.config.clone() });
         if window_controls_changed {

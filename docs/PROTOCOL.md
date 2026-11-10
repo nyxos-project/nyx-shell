@@ -240,7 +240,8 @@ Both reply `{}` once Hyprland accepted the dispatch, `read_only` in read-only mo
 `visible` is what the surface should do. `requested` is what was asked. When they
 differ, `reason` says why: `locked`, `fullscreen`. `monitor` is `null` for `all`.
 A pinned overlay's state also has `pin`: `{"size":[360,280],"at":[908,42]}`, its box in
-logical pixels from its monitor's top-left, where the surface draws.
+logical pixels from its monitor's top-left, where the surface draws, and `manual: true`
+once it was moved by hand.
 
 - `RegisterOverlay` [overlay.manage] `{policy}` → `{overlay}`. Owned by this connection;
   removed when it disconnects. Registering an id another live connection owns is
@@ -258,6 +259,12 @@ logical pixels from its monitor's top-left, where the surface draws.
   pinned, a new column to the left when one is full. `invalid` when it doesn't fit, for
   another category, or for `all`; `locked` while locked. `pinned: false` unpins and
   hides it; the rest move up. When the monitor goes away, it moves to the active one.
+- `MovePinnedOverlay` [overlay.manage] `{id, at?}` → `{overlay}`. Puts a pinned overlay at
+  `at` ([x, y] from its monitor's top-left), kept inside the usable area and out of the
+  stack (`pin.manual: true`); pinning it again on the same monitor keeps it there.
+  Without `at` it goes back into the stack. `invalid` when it isn't pinned.
+- `[pins]` in `shell.toml`: `edge` (`right`, the default, or `left`) is the edge the
+  stack goes down, `margin` (12) and `gap` (10) its distances in logical pixels.
 - `GetOverlayState` [desktop.read] → `{overlays}`.
 - `SubscribeOverlayState` [desktop.read] → `{seq, overlays}`.
 

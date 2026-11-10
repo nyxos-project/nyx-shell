@@ -7,7 +7,7 @@
 //! right edge of their monitor.
 
 use crate::{ClientId, Owner};
-use nyx_shell_proto::config::OverlayOverride;
+use nyx_shell_proto::config::{OverlayOverride, PinEdge, PinsConfig};
 use nyx_shell_proto::overlay::{HiddenReason, PANELS, PIN_MAX, PIN_MIN};
 use nyx_shell_proto::{Category, DesktopState, ErrorBody, ErrorCode, FullscreenRule, Keyboard, MonitorState, OverlayPolicy, OverlayState, Pin, Placement};
 use std::collections::BTreeMap;
@@ -74,11 +74,9 @@ pub struct Overlays {
     entries: BTreeMap<String, Entry>,
     overrides: BTreeMap<String, OverlayOverride>,
     pins: u64,
+    /// `[pins]`: the edge, margin and gap of the stack.
+    stack: PinsConfig,
 }
-
-/// Pinned overlays keep this far from the usable area's edge, and from each other.
-pub const PIN_MARGIN: i32 = 12;
-pub const PIN_GAP: i32 = 10;
 
 fn err(code: ErrorCode, msg: impl Into<String>) -> ErrorBody {
     ErrorBody::new(code, msg)
@@ -265,9 +263,11 @@ impl Overlays {
             }
         };
         let saved = self.entries[id].clone();
+        // Pinned again on the same monitor (a restart): a hand-placed one stays put.
+        let kept = e.pin.filter(|(p, _)| p.manual && was.as_deref() == Some(target.as_str())).map(|(p, _)| p.at);
         {
             let e = self.entries.get_mut(id).expect("checked above");
-            e.pin = Some((Pin { size, at: [0, 0] }, order));
+            e.pin = Some((Pin { size, at: kept.unwrap_or([0, 0]), manual: kept.is_some() }, order));
             e.requested = true;
             e.monitor = Some(target.clone());
         }
@@ -291,14 +291,22 @@ impl Overlays {
     /// which lets the last ones overlap. Returns the ones that moved.
     fn lay_out(&mut self, monitor: &str, desktop: &DesktopState, locked: bool, crowd: bool) -> Option<Vec<Change>> {
         let Some(m) = desktop.monitor(monitor) else { return Some(Vec::new()) };
+        let on_it = |e: &&Entry| e.requested && e.monitor.as_deref() == Some(monitor);
         let mut pinned: Vec<(u64, String, [u32; 2])> = self
             .entries
             .values()
-            .filter(|e| e.requested && e.monitor.as_deref() == Some(monitor))
-            .filter_map(|e| e.pin.map(|(p, order)| (order, e.policy.id.clone(), p.size)))
+            .filter(on_it)
+            .filter_map(|e| e.pin.filter(|(p, _)| !p.manual).map(|(p, order)| (order, e.policy.id.clone(), p.size)))
             .collect();
         pinned.sort();
-        let spots = spots(m, pinned.iter().map(|p| p.2), crowd)?;
+        let mut spots = spots(m, pinned.iter().map(|p| p.2), crowd, &self.stack)?;
+        // Hand-placed ones stay where they were put, inside the usable area.
+        let manual: Vec<(String, [i32; 2])> =
+            self.entries.values().filter(on_it).filter_map(|e| e.pin.filter(|(p, _)| p.manual).map(|(p, _)| (e.policy.id.clone(), inside(m, p.size, p.at)))).collect();
+        for (id, at) in manual {
+            pinned.push((0, id, [0, 0]));
+            spots.push(at);
+        }
         let mut changes = Vec::new();
         for ((_, id, _), at) in pinned.iter().zip(spots) {
             let e = self.entries.get_mut(id).expect("listed above");
@@ -311,6 +319,37 @@ impl Overlays {
             }
         }
         Some(changes)
+    }
+
+    /// Put pinned overlay `id` at `at` by hand (kept inside its monitor's usable area,
+    /// out of the stack), or with `None` back into the stack. Returns what moved.
+    pub fn move_pin(&mut self, id: &str, at: Option<[i32; 2]>, desktop: &DesktopState, locked: bool) -> Result<Vec<Change>, ErrorBody> {
+        let e = self.entries.get_mut(id).ok_or_else(|| err(ErrorCode::NotFound, format!("no overlay {id}")))?;
+        let Some((pin, _)) = &mut e.pin else { return Err(err(ErrorCode::Invalid, format!("{id} isn't pinned"))) };
+        match at {
+            Some(at) => {
+                pin.manual = true;
+                pin.at = at;
+            }
+            None => pin.manual = false,
+        }
+        let monitor = e.monitor.clone().unwrap_or_default();
+        let mut changes = self.lay_out(&monitor, desktop, locked, true).unwrap_or_default();
+        if !changes.iter().any(|c| matches!(c, Change::Changed(s) if s.id == id)) {
+            let e = self.entries.get_mut(id).expect("checked above");
+            changes.extend(refresh(e, desktop, locked, true));
+        }
+        Ok(changes)
+    }
+
+    /// New `[pins]` settings: every monitor's stack again.
+    pub fn set_stack(&mut self, stack: PinsConfig, desktop: &DesktopState, locked: bool) -> Vec<Change> {
+        if stack == self.stack {
+            return Vec::new();
+        }
+        self.stack = stack;
+        let monitors: std::collections::BTreeSet<String> = self.entries.values().filter(|e| e.pin.is_some() && e.requested).filter_map(|e| e.monitor.clone()).collect();
+        monitors.into_iter().flat_map(|m| self.lay_out(&m, desktop, locked, true).unwrap_or_default()).collect()
     }
 
     fn set_requested(&mut self, id: &str, on: bool, desktop: &DesktopState, locked: bool) -> Vec<Change> {
@@ -471,29 +510,39 @@ fn place(placement: &Placement, wish: Option<String>, desktop: &DesktopState) ->
     }
 }
 
-/// Top-left corners for boxes of `sizes`, in order, inside `m`'s usable area.
-fn spots(m: &MonitorState, sizes: impl Iterator<Item = [u32; 2]>, crowd: bool) -> Option<Vec<[i32; 2]>> {
+/// Top-left corners for boxes of `sizes`, in order, down the `[pins]` edge of `m`'s
+/// usable area, a new column inward when one is full.
+fn spots(m: &MonitorState, sizes: impl Iterator<Item = [u32; 2]>, crowd: bool, stack: &PinsConfig) -> Option<Vec<[i32; 2]>> {
     let [l, t, r, b] = m.reserved;
-    let (left, top) = (l + PIN_MARGIN, t + PIN_MARGIN);
-    let (right, bottom) = (m.logical_width - r - PIN_MARGIN, m.logical_height - b - PIN_MARGIN);
-    let (mut edge, mut y, mut column) = (right, top, 0);
+    let (margin, gap) = (stack.margin, stack.gap);
+    let (left, top) = (l + margin, t + margin);
+    let (right, bottom) = (m.logical_width - r - margin, m.logical_height - b - margin);
+    let from_left = stack.edge == PinEdge::Left;
+    let (mut edge, mut y, mut column) = (if from_left { left } else { right }, top, 0);
     let mut out = Vec::new();
     for [w, h] in sizes {
         let (w, h) = (w as i32, h as i32);
         if y > top && y + h > bottom {
-            edge -= column + PIN_GAP;
+            edge = if from_left { edge + column + gap } else { edge - column - gap };
             y = top;
             column = 0;
         }
-        let x = edge - w;
-        if !crowd && (x < left || y + h > bottom) {
+        let x = if from_left { edge } else { edge - w };
+        if !crowd && (x < left || x + w > right || y + h > bottom) {
             return None;
         }
-        out.push([x.max(left), y]);
-        y += h + PIN_GAP;
+        out.push([x.clamp(left, (right - w).max(left)), y]);
+        y += h + gap;
         column = column.max(w);
     }
     Some(out)
+}
+
+/// `at` moved so a box of `size` lies inside `m`'s usable area.
+fn inside(m: &MonitorState, size: [u32; 2], at: [i32; 2]) -> [i32; 2] {
+    let [l, t, r, b] = m.reserved;
+    let (w, h) = (size[0] as i32, size[1] as i32);
+    [at[0].clamp(l, (m.logical_width - r - w).max(l)), at[1].clamp(t, (m.logical_height - b - h).max(t))]
 }
 
 /// A fullscreen window on `monitor`, or on any monitor for overlays on all of them.
@@ -711,6 +760,51 @@ mod tests {
         let changes = o.client_gone(2, &d, false);
         assert!(changes.contains(&Change::Removed("b".into())));
         assert_eq!(at(&o, "c"), [1280 - 12 - 300, 12]);
+    }
+
+    #[test]
+    fn pinned_overlays_moved_by_hand_stay_and_the_rest_restack() {
+        let mut d = desktop();
+        d.monitors[0].logical_width = 1280;
+        d.monitors[0].logical_height = 800;
+        d.monitors[0].reserved = [0, 30, 0, 0];
+        let mut o = Overlays::new();
+        for id in ["a", "b"] {
+            o.register(pinnable(id), client(1)).unwrap();
+            o.pin(id, true, Some([300, 200]), None, &d, false).unwrap();
+        }
+        o.move_pin("a", Some([100, 400]), &d, false).unwrap();
+        assert_eq!(at(&o, "a"), [100, 400]);
+        assert!(o.get("a").unwrap().pin.unwrap().manual);
+        assert_eq!(at(&o, "b"), [1280 - 12 - 300, 42], "b takes the top of the stack");
+        o.move_pin("a", Some([5000, -50]), &d, false).unwrap();
+        assert_eq!(at(&o, "a"), [1280 - 300, 30], "kept inside the usable area");
+        // Pinned again (a restart), it stays where it was put.
+        o.pin("a", true, Some([300, 200]), None, &d, false).unwrap();
+        assert_eq!(at(&o, "a"), [1280 - 300, 30]);
+        d.monitors[0].logical_width = 1000;
+        o.recompute(&d, false);
+        assert_eq!(at(&o, "a"), [1000 - 300, 30], "and inside when the monitor shrinks");
+        o.move_pin("a", None, &d, false).unwrap();
+        assert!(!o.get("a").unwrap().pin.unwrap().manual);
+        assert_eq!(at(&o, "a"), [1000 - 12 - 300, 42], "back in the stack, first as pinned first");
+        assert_eq!(o.move_pin("nope", None, &d, false).unwrap_err().code, ErrorCode::NotFound);
+        o.register(pinnable("c"), client(1)).unwrap();
+        assert_eq!(o.move_pin("c", None, &d, false).unwrap_err().code, ErrorCode::Invalid, "not pinned");
+    }
+
+    #[test]
+    fn the_stack_can_run_down_the_left_edge() {
+        let mut d = desktop();
+        d.monitors[0].logical_width = 1280;
+        d.monitors[0].logical_height = 800;
+        d.monitors[0].reserved = [50, 0, 0, 0];
+        let mut o = Overlays::new();
+        o.register(pinnable("a"), client(1)).unwrap();
+        o.pin("a", true, Some([300, 200]), None, &d, false).unwrap();
+        let changes = o.set_stack(PinsConfig { edge: PinEdge::Left, margin: 20, gap: 4 }, &d, false);
+        assert_eq!(changes.len(), 1);
+        assert_eq!(at(&o, "a"), [50 + 20, 20]);
     }
 
     #[test]

@@ -139,6 +139,13 @@ pub enum Op {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         monitor: Option<String>,
     },
+    /// Put a pinned overlay at `at` (logical pixels from its monitor's top-left, kept
+    /// inside the usable area), out of the stack; without `at`, back into it.
+    MovePinnedOverlay {
+        id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        at: Option<[i32; 2]>,
+    },
     GetOverlayState,
     SubscribeOverlayState,
     RegisterComponent {
@@ -202,6 +209,7 @@ impl Op {
         "HideOverlay",
         "ToggleOverlay",
         "PinOverlay",
+        "MovePinnedOverlay",
         "GetOverlayState",
         "SubscribeOverlayState",
         "RegisterComponent",
@@ -269,7 +277,7 @@ impl Op {
             | GetThemeGeneration
             | SubscribeThemeChanges => Capability::DesktopRead,
             RequestWorkspaceAction(_) | RequestWindowAction(_) => Capability::DesktopAct,
-            RegisterOverlay { .. } | UnregisterOverlay { .. } | ShowOverlay { .. } | HideOverlay { .. } | ToggleOverlay { .. } | PinOverlay { .. } => {
+            RegisterOverlay { .. } | UnregisterOverlay { .. } | ShowOverlay { .. } | HideOverlay { .. } | ToggleOverlay { .. } | PinOverlay { .. } | MovePinnedOverlay { .. } => {
                 Capability::OverlayManage
             }
             RegisterComponent { .. } | ReportReady { .. } | ReportHealth { .. } => Capability::ComponentRegister,

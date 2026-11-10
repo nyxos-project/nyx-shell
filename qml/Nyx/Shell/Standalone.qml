@@ -39,6 +39,10 @@ QtObject {
         case "UnregisterOverlay":
             unregisterOverlay(b.id);
             return reply({});
+        case "MovePinnedOverlay": {
+            const err = movePin(b.id, b.at || null);
+            return err ? reply(null, err) : reply({ overlay: overlayStates[b.id] });
+        }
         case "PinOverlay": {
             const err = pin(b.id, b.pinned === true, b.size || null, b.monitor || null);
             return err ? reply(null, err) : reply({ overlay: overlayStates[b.id] });
@@ -213,34 +217,93 @@ QtObject {
         }
     }
 
-    // Pinned overlays, as Shell Core's overlay.rs lays them out: down the right edge of
-    // the monitor's usable area in the order they were pinned, a new column to the left
-    // when one is full, 12 px from the edges and 10 px apart.
-    readonly property int pinMargin: 12
-    readonly property int pinGap: 10
+    // Pinned overlays, as Shell Core's overlay.rs lays them out: down an edge of the
+    // monitor's usable area in the order they were pinned, a new column inward when one
+    // is full; hand-placed ones (MovePinnedOverlay) stay where they were put. `[pins]` in
+    // ~/.config/nyx/shell.toml picks the edge (right or left), margin and gap.
+    property string pinEdge: "right"
+    property int pinMargin: 12
+    property int pinGap: 10
     property int _pins: 0
     property var _pinOrder: ({})
+
+    property FileView _shellToml: FileView {
+        path: (Quickshell.env("XDG_CONFIG_HOME") || ((Quickshell.env("HOME") || "") + "/.config")) + "/nyx/shell.toml"
+        watchChanges: true
+        printErrors: false
+        onFileChanged: reload()
+        onLoaded: local._readPins(text())
+        onLoadFailed: local._readPins("")
+    }
+    // Only [pins]' three keys; Shell Core reads the rest.
+    function _readPins(t) {
+        let inPins = false, edge = "right", margin = 12, gap = 10;
+        for (const raw of String(t).split("\n")) {
+            const line = raw.replace(/#.*/, "").trim();
+            if (line.startsWith("[")) {
+                inPins = line === "[pins]";
+                continue;
+            }
+            const m = inPins ? line.match(/^(edge|margin|gap)\s*=\s*"?([A-Za-z0-9]+)"?$/) : null;
+            if (!m)
+                continue;
+            if (m[1] === "edge" && (m[2] === "left" || m[2] === "right"))
+                edge = m[2];
+            else if (m[1] === "margin" && +m[2] >= 0 && +m[2] <= 200)
+                margin = +m[2];
+            else if (m[1] === "gap" && +m[2] >= 0 && +m[2] <= 100)
+                gap = +m[2];
+        }
+        if (edge === pinEdge && margin === pinMargin && gap === pinGap)
+            return;
+        pinEdge = edge;
+        pinMargin = margin;
+        pinGap = gap;
+        if (loaded)
+            reevaluate();
+    }
 
     function spots(m, sizes, crowd) {
         const r = m.reserved || [0, 0, 0, 0];
         const left = r[0] + pinMargin, top = r[1] + pinMargin;
         const right = m.logical_width - r[2] - pinMargin, bottom = m.logical_height - r[3] - pinMargin;
-        let edge = right, y = top, column = 0;
+        const fromLeft = pinEdge === "left";
+        let edge = fromLeft ? left : right, y = top, column = 0;
         const out = [];
         for (const s of sizes) {
             if (y > top && y + s[1] > bottom) {
-                edge -= column + pinGap;
+                edge = fromLeft ? edge + column + pinGap : edge - column - pinGap;
                 y = top;
                 column = 0;
             }
-            const x = edge - s[0];
-            if (!crowd && (x < left || y + s[1] > bottom))
+            const x = fromLeft ? edge : edge - s[0];
+            if (!crowd && (x < left || x + s[0] > right || y + s[1] > bottom))
                 return null;
-            out.push([Math.max(x, left), y]);
+            out.push([Math.min(Math.max(x, left), Math.max(left, right - s[0])), y]);
             y += s[1] + pinGap;
             column = Math.max(column, s[0]);
         }
         return out;
+    }
+
+    // `at` moved so a box of `size` lies inside the usable area.
+    function inside(m, size, at) {
+        const r = m.reserved || [0, 0, 0, 0];
+        return [Math.min(Math.max(at[0], r[0]), Math.max(r[0], m.logical_width - r[2] - size[0])), Math.min(Math.max(at[1], r[1]), Math.max(r[1], m.logical_height - r[3] - size[1]))];
+    }
+
+    function movePin(id, at) {
+        const cur = overlayStates[id];
+        if (!cur)
+            return { code: "not_found", msg: "no overlay " + id };
+        if (!cur.pin)
+            return { code: "invalid", msg: id + " isn't pinned" };
+        const pin = { size: cur.pin.size, at: at ? [at[0], at[1]] : cur.pin.at };
+        if (at)
+            pin.manual = true;
+        putOverlay(Object.assign({}, cur, { pin: pin, revision: cur.revision + 1 }));
+        layOut(cur.monitor, true);
+        return null;
     }
 
     // Place the pinned overlays on `name` again; false when they don't fit (unless crowd).
@@ -248,13 +311,18 @@ QtObject {
         const m = core.desktop.monitors.find(x => x.name === name);
         if (!m)
             return true;
-        const pinned = Object.values(overlayStates).filter(s => s.pin && s.requested && s.monitor === name).sort((a, b) => (_pinOrder[a.id] || 0) - (_pinOrder[b.id] || 0));
+        const all = Object.values(overlayStates).filter(s => s.pin && s.requested && s.monitor === name);
+        const pinned = all.filter(s => !s.pin.manual).sort((a, b) => (_pinOrder[a.id] || 0) - (_pinOrder[b.id] || 0));
         const at = spots(m, pinned.map(s => s.pin.size), crowd);
         if (!at)
             return false;
+        for (const s of all.filter(s => s.pin.manual)) {
+            pinned.push(s);
+            at.push(inside(m, s.pin.size, s.pin.at));
+        }
         pinned.forEach((s, i) => {
             if (s.pin.at[0] !== at[i][0] || s.pin.at[1] !== at[i][1])
-                putOverlay(Object.assign({}, s, { pin: { size: s.pin.size, at: at[i] }, revision: s.revision + 1 }));
+                putOverlay(Object.assign({}, s, { pin: Object.assign({}, s.pin, { at: at[i] }), revision: s.revision + 1 }));
         });
         return true;
     }
@@ -285,7 +353,11 @@ QtObject {
             o[id] = _pins;
             _pinOrder = o;
         }
-        putOverlay(evaluate(Object.assign({}, cur, { requested: true, monitor: mon, pin: { size: [size[0], size[1]], at: cur.pin ? cur.pin.at : [0, 0] }, revision: cur.revision + 1 })));
+        const kept = cur.pin && cur.pin.manual && was === mon;
+        const pin = { size: [size[0], size[1]], at: cur.pin ? cur.pin.at : [0, 0] };
+        if (kept)
+            pin.manual = true;
+        putOverlay(evaluate(Object.assign({}, cur, { requested: true, monitor: mon, pin: pin, revision: cur.revision + 1 })));
         if (!layOut(mon, false)) {
             putOverlay(cur);
             return { code: "invalid", msg: "there's no room for another pinned panel on " + mon };

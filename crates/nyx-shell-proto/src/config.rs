@@ -23,6 +23,32 @@ pub struct ShellConfig {
     /// so the keys NyxOS's Hyprland config binds stay owned there.
     pub shortcuts: BTreeMap<String, String>,
     pub window_controls: WindowControlsConfig,
+    pub pins: PinsConfig,
+}
+
+/// Where pinned overlays (Glimpse's pinned panels) stack.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct PinsConfig {
+    /// The edge of the usable area they go down: `right` or `left`.
+    pub edge: PinEdge,
+    /// From that edge and the top, and between them, logical pixels.
+    pub margin: i32,
+    pub gap: i32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PinEdge {
+    Left,
+    #[default]
+    Right,
+}
+
+impl Default for PinsConfig {
+    fn default() -> Self {
+        PinsConfig { edge: PinEdge::Right, margin: 12, gap: 10 }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -138,7 +164,7 @@ pub struct ConfigState {
     pub errors: Vec<String>,
 }
 
-const SECTIONS: [&str; 7] = ["focus", "ipc", "log", "monitors", "overlays", "shortcuts", "window_controls"];
+const SECTIONS: [&str; 8] = ["focus", "ipc", "log", "monitors", "overlays", "pins", "shortcuts", "window_controls"];
 
 impl ShellConfig {
     /// Read merged settings. Returns the config and the problems found.
@@ -208,6 +234,12 @@ impl ShellConfig {
             }
             if let Some(id) = w.apps.keys().find(|id| !valid_app_id(id)) {
                 return Err(format!("invalid app id {id:?}: 1 to 128 of A-Z a-z 0-9 . _ + -"));
+            }
+            Ok(())
+        });
+        section(table, "pins", &mut c.pins, &mut errors, |p| {
+            if !(0..=200).contains(&p.margin) || !(0..=100).contains(&p.gap) {
+                return Err("margin is 0 to 200 and gap 0 to 100".into());
             }
             Ok(())
         });
