@@ -55,8 +55,8 @@ pub fn normalize(d: &Desktop, generation: u64) -> DesktopState {
             monitor: w.monitor.clone(),
             active: shown(w.id),
             special: w.is_special(),
-            user: w.is_user(),
-            number: w.number(),
+            user: d.workspace_number(w).is_some(),
+            number: d.workspace_number(w),
             has_fullscreen: w.has_fullscreen,
             windows: d.windows.iter().filter(|x| x.workspace == w.id).map(|x| x.address.clone()).collect(),
         })
