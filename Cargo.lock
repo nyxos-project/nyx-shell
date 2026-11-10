@@ -728,7 +728,7 @@ dependencies = [
 [[package]]
 name = "nyx-desktop"
 version = "0.1.0"
-source = "git+https://github.com/design-nexus/nyx-core.git?rev=a93881d696abb6e9176675d5c84374b9bd124167#a93881d696abb6e9176675d5c84374b9bd124167"
+source = "git+https://github.com/design-nexus/nyx-core.git?rev=04c93f7670075f5b4cf8150fcafe3f485b6dc693#04c93f7670075f5b4cf8150fcafe3f485b6dc693"
 dependencies = [
  "anyhow",
  "serde",
