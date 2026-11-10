@@ -182,7 +182,10 @@ Scope {
 
         onShownChanged: {
             if (shown)
-                Qt.callLater(() => main.openAt(0, 0));
+                Qt.callLater(() => {
+                    main.openAt(0, 0);
+                    keys.forceActiveFocus();
+                });
             else {
                 main.close();
                 sub.close();
@@ -193,6 +196,30 @@ Scope {
         MouseArea {
             anchors.fill: parent
             onClicked: root.close()
+        }
+
+        // The menus can't grab: a popup's grab needs an input event on this surface,
+        // and the click that asked for the menu went to the window. The overlay has
+        // the keyboard, so it moves through them.
+        Item {
+            id: keys
+            anchors.fill: parent
+            focus: true
+            Keys.onPressed: event => {
+                const m = sub.visible ? sub : main;
+                if (event.key === Qt.Key_Up)
+                    m.move(-1);
+                else if (event.key === Qt.Key_Down)
+                    m.move(1);
+                else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+                    if (m.current >= 0)
+                        m.pick(m.current);
+                } else if (event.key === Qt.Key_Escape)
+                    root.close();
+                else
+                    return;
+                event.accepted = true;
+            }
         }
 
         Item {
@@ -206,6 +233,7 @@ Scope {
         Menu {
             id: main
             anchorItem: point
+            grabFocus: false
             minWidth: 240
             entries: root.entries()
             onTriggered: id => root.pick(id)
@@ -215,6 +243,7 @@ Scope {
         Menu {
             id: sub
             anchorItem: point
+            grabFocus: false
             minWidth: 240
             onTriggered: id => root.pick(id)
             onDismissed: root.dismissed()
