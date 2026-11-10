@@ -30,9 +30,10 @@ fn target(address: &str) -> String {
     format!("window = \"address:0x{address}\"")
 }
 
-/// Float (`on`) or tile a window, whatever it is now.
+/// Float (`on`) or tile a window, whatever it is now. Hyprland's float takes `enable`
+/// and `disable` (fullscreen's `set` and `unset` would toggle).
 pub fn set_floating(address: &str, on: bool) -> Dispatch {
-    let (action, classic) = if on { ("set", "setfloating") } else { ("unset", "settiled") };
+    let (action, classic) = if on { ("enable", "setfloating") } else { ("disable", "settiled") };
     Dispatch {
         lua: format!("hl.dsp.window.float({{ action = \"{action}\", {} }})", target(address)),
         classic: format!("{classic} address:0x{address}"),
@@ -60,7 +61,8 @@ mod tests {
 
     #[test]
     fn dispatchers() {
-        assert_eq!(set_floating("ab", true).lua, "hl.dsp.window.float({ action = \"set\", window = \"address:0xab\" })");
+        assert_eq!(set_floating("ab", true).lua, "hl.dsp.window.float({ action = \"enable\", window = \"address:0xab\" })");
+        assert!(set_floating("ab", false).lua.contains("action = \"disable\""));
         assert_eq!(set_floating("ab", false).classic, "settiled address:0xab");
         assert_eq!(
             toggle_fullscreen("ab").lua,
