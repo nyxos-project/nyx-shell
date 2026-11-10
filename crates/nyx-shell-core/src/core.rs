@@ -13,6 +13,7 @@ use crate::peer::Identity;
 use crate::registry::{self, Components};
 use crate::state::normalize;
 use crate::theme::ThemeSource;
+use crate::window;
 use crate::{ClientId, Owner, now_us};
 use nyx_desktop::actions::Dispatch;
 use nyx_shell_proto::overlay::PANELS;
@@ -71,6 +72,8 @@ pub enum Effect {
     Bridge(BridgeCmd),
     Switcher { path: PathBuf, line: String, reply: ReplyTo },
     Launch { argv: Vec<String>, reply: ReplyTo },
+    /// Run a fixed program to its end (Omarchy's minimize) and reply `{}` once it succeeded.
+    Run { argv: Vec<String>, reply: ReplyTo },
     ResolvePointer { client: ClientId, overlay: String, reply: ReplyTo },
     /// Tell systemd the session is ready.
     Ready,
@@ -104,6 +107,7 @@ pub struct Core {
     state: SessionState,
     desktop: DesktopState,
     raw: Arc<nyx_desktop::Desktop>,
+    window_context: window::Context,
     /// Whether each panel's layer surface was mapped at the last update.
     panel_layers: BTreeMap<&'static str, bool>,
     last_event: Option<Instant>,
@@ -165,6 +169,7 @@ impl Core {
             state: SessionState::Starting,
             desktop,
             raw: Arc::default(),
+            window_context: window::Context::default(),
             panel_layers: BTreeMap::new(),
             last_event: None,
             locked: false,
@@ -267,6 +272,7 @@ impl Core {
         let Some(c) = self.clients.get(&client) else { return };
         if let Some(cap) = op.capability()
             && !c.identity.can(cap)
+            && !self.own_window(&c.identity, &op)
         {
             return answer(reply, id, Err(err(ErrorCode::Forbidden, format!("{} may not use {}", c.identity.program, cap.name()))));
         }
@@ -302,7 +308,10 @@ impl Core {
                 Err(e) => Err(e),
             },
             Op::RequestWindowAction(a) => match self.can_dispatch().and_then(|_| compositor::window_dispatch(&a, &self.desktop)) {
-                Ok(steps) => return self.effects.push(Effect::Dispatch { steps, reply: Some((id, reply)) }),
+                Ok(compositor::WindowRoute::Dispatch(steps)) => {
+                    return self.effects.push(Effect::Dispatch { steps, reply: Some((id, reply)) });
+                }
+                Ok(compositor::WindowRoute::Run(argv)) => return self.effects.push(Effect::Run { argv, reply: (id, reply) }),
                 Err(e) => Err(e),
             },
             Op::RegisterOverlay { policy } => {
@@ -399,6 +408,16 @@ impl Core {
         m.insert("seq".into(), json!(c.seq));
         m.insert(key.into(), snapshot);
         Value::Object(m)
+    }
+
+    /// `window.own`: a window action, other than focusing, on a window of the client's
+    /// own process.
+    fn own_window(&self, identity: &Identity, op: &Op) -> bool {
+        let Op::RequestWindowAction(a) = op else { return false };
+        identity.can(nyx_shell_proto::Capability::WindowOwn)
+            && a.action != nyx_shell_proto::WindowActionKind::Focus
+            && identity.pid.is_some()
+            && self.desktop.window(&a.window).is_some_and(|w| w.pid == identity.pid)
     }
 
     fn can_dispatch(&self) -> Result<(), ErrorBody> {
@@ -520,6 +539,7 @@ impl Core {
     fn desktop_update(&mut self, u: Update) {
         self.last_event = Some(Instant::now());
         self.raw = u.desktop;
+        self.window_context = u.context;
         self.follow_panel_layers();
         self.rebuild();
         self.follow_virtual_monitors();
@@ -571,7 +591,8 @@ impl Core {
 
     /// Normalize the latest compositor state again and tell clients what changed.
     fn rebuild(&mut self) {
-        let next = normalize(&self.raw, self.desktop.generation + 1);
+        let mut next = normalize(&self.raw, self.desktop.generation + 1);
+        window::annotate(&mut next, &self.config.config.window_controls, &self.window_context);
         let delta = next.delta_from(&self.desktop);
         if delta.is_empty() {
             return;
@@ -654,11 +675,15 @@ impl Core {
         for e in &errors {
             tracing::warn!(error = %e, "shell settings");
         }
+        let window_controls_changed = config.window_controls != self.config.config.window_controls;
         self.config = ConfigState { generation: self.config.generation + 1, config, errors };
         let before = self.overlays.any_restoring_visible();
         let changes = self.overlays.set_overrides(self.config.config.overlays.clone(), &self.desktop, self.locked);
         self.apply_overlay_changes(before, changes);
         self.emit(Event::ConfigChanged { config: self.config.clone() });
+        if window_controls_changed {
+            self.rebuild();
+        }
     }
 
     fn reload_theme(&mut self) {

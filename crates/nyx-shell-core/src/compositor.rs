@@ -1,6 +1,7 @@
 //! Hyprland: the watcher that feeds the state, dispatching, and turning client requests
 //! into dispatchers only after checking them against the state.
 
+use crate::window;
 use nyx_desktop::actions::{self, Dispatch};
 use nyx_desktop::hypr::Instance;
 use nyx_desktop::Desktop;
@@ -62,11 +63,33 @@ impl Compositor for Hyprland {
 /// One update from the watcher thread.
 pub struct Update {
     pub desktop: Arc<Desktop>,
+    pub context: crate::window::Context,
 }
 
-/// Start the watcher; `send` runs on its thread for every update.
+/// Start the watcher; `send` runs on its thread for every update. Omarchy's workspace
+/// modes are read there too, as reading them may ask Hyprland.
 pub fn watch(send: impl Fn(Update) + Send + 'static) -> nyx_desktop::watch::Watcher {
-    nyx_desktop::watch::watch(move |u| send(Update { desktop: u.desktop }))
+    let omarchy_minimize = crate::actions::which(crate::window::OMARCHY_MINIMIZE).is_some();
+    nyx_desktop::watch::watch(move |u| {
+        let context = crate::window::Context {
+            minimize_workspaces: if omarchy_minimize { floating_workspaces(&u.desktop) } else { Default::default() },
+        };
+        send(Update { desktop: u.desktop, context })
+    })
+}
+
+/// Omarchy's floating workspaces, where its minimize works.
+fn floating_workspaces(d: &Desktop) -> std::collections::BTreeSet<i64> {
+    use nyx_desktop::omarchy::{Mode, workspace_mode};
+    d.workspaces.iter().filter(|w| w.id >= 1 && workspace_mode(w.id, &w.tiled_layout) == Mode::Floating).map(|w| w.id).collect()
+}
+
+/// What a window action becomes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WindowRoute {
+    Dispatch(Vec<Dispatch>),
+    /// A fixed program (Omarchy's minimize), waited for.
+    Run(Vec<String>),
 }
 
 fn invalid(msg: impl Into<String>) -> ErrorBody {
@@ -103,17 +126,27 @@ pub fn workspace_dispatch(action: &WorkspaceAction) -> Result<Dispatch, ErrorBod
     }
 }
 
-pub fn window_dispatch(a: &WindowAction, desktop: &DesktopState) -> Result<Vec<Dispatch>, ErrorBody> {
+/// The dispatchers for `a`, after checking that the window exists and can take the
+/// action now (`WindowState::actions`).
+pub fn window_dispatch(a: &WindowAction, desktop: &DesktopState) -> Result<WindowRoute, ErrorBody> {
     if !a.window.bytes().all(|b| b.is_ascii_hexdigit()) {
         return Err(invalid("window addresses are hex"));
     }
     let w = desktop.window(&a.window).ok_or_else(|| ErrorBody::new(ErrorCode::NotFound, format!("no window {}", a.window)))?;
+    if !w.actions.is_empty() && !w.actions.contains(&a.action) {
+        return Err(invalid(format!("{} isn't available for this window now", serde_json::to_value(a.action).unwrap_or_default())));
+    }
     let addr = &w.address;
-    Ok(match a.action {
+    Ok(WindowRoute::Dispatch(match a.action {
         WindowActionKind::Focus => actions::activate(addr, w.minimized, desktop.active.workspace.unwrap_or(0)),
         WindowActionKind::Close => vec![actions::close_window(addr)],
         WindowActionKind::ToggleFloating => vec![actions::toggle_floating(addr)],
+        WindowActionKind::SetFloating => vec![window::set_floating(addr, true)],
+        WindowActionKind::SetTiled => vec![window::set_floating(addr, false)],
         WindowActionKind::ToggleMaximized => vec![actions::toggle_maximized(addr)],
+        WindowActionKind::ToggleFullscreen => vec![window::toggle_fullscreen(addr)],
+        WindowActionKind::TogglePinned => vec![window::toggle_pinned(addr)],
+        WindowActionKind::Minimize => return Ok(WindowRoute::Run(vec![window::OMARCHY_MINIMIZE.into(), format!("0x{addr}")])),
         WindowActionKind::MoveToWorkspace => {
             let ws = a.workspace.as_deref().ok_or_else(|| invalid("move_to_workspace needs a workspace"))?;
             if !valid_workspace(ws) {
@@ -126,7 +159,7 @@ pub fn window_dispatch(a: &WindowAction, desktop: &DesktopState) -> Result<Vec<D
             let m = desktop.monitor(m).ok_or_else(|| ErrorBody::new(ErrorCode::NotFound, format!("no monitor {m}")))?;
             vec![actions::move_to_monitor(addr, &m.name)]
         }
-    })
+    }))
 }
 
 #[cfg(test)]
@@ -161,25 +194,51 @@ mod tests {
         assert!(valid_workspace("special:minimized"));
     }
 
+    fn steps(a: &WindowAction, d: &DesktopState) -> Vec<Dispatch> {
+        match window_dispatch(a, d).unwrap() {
+            WindowRoute::Dispatch(s) => s,
+            WindowRoute::Run(argv) => panic!("ran {argv:?}"),
+        }
+    }
+
     #[test]
     fn windows_must_exist() {
         let d = desktop();
-        assert_eq!(window_dispatch(&act("abc", WindowActionKind::Close), &d).unwrap()[0].classic, "closewindow address:0xabc");
+        assert_eq!(steps(&act("abc", WindowActionKind::Close), &d)[0].classic, "closewindow address:0xabc");
         assert_eq!(window_dispatch(&act("def", WindowActionKind::Close), &d).unwrap_err().code, ErrorCode::NotFound);
         assert_eq!(window_dispatch(&act("ab\"c", WindowActionKind::Close), &d).unwrap_err().code, ErrorCode::Invalid);
         let mut m = act("abc", WindowActionKind::MoveToMonitor);
         m.monitor = Some("HDMI-9".into());
         assert_eq!(window_dispatch(&m, &d).unwrap_err().code, ErrorCode::NotFound);
         m.monitor = Some("DP-1".into());
-        assert_eq!(window_dispatch(&m, &d).unwrap()[0].classic, "movewindow mon:DP-1,address:0xabc");
+        assert_eq!(steps(&m, &d)[0].classic, "movewindow mon:DP-1,address:0xabc");
         let mut w = act("abc", WindowActionKind::MoveToWorkspace);
         assert!(window_dispatch(&w, &d).is_err());
         w.workspace = Some("special:x\"".into());
         assert!(window_dispatch(&w, &d).is_err());
         w.workspace = Some("4".into());
         w.follow = true;
-        assert_eq!(window_dispatch(&w, &d).unwrap()[0].classic, "movetoworkspace 4,address:0xabc");
-        let f = window_dispatch(&act("abc", WindowActionKind::Focus), &d).unwrap();
+        assert_eq!(steps(&w, &d)[0].classic, "movetoworkspace 4,address:0xabc");
+        let f = steps(&act("abc", WindowActionKind::Focus), &d);
         assert_eq!(f.len(), 2, "focus and raise");
+    }
+
+    #[test]
+    fn only_what_the_window_can_do_now() {
+        let mut d = desktop();
+        let here = [1].into();
+        d.windows[0].actions = nyx_shell_proto::window::available(&d.windows[0], &here);
+        assert_eq!(steps(&act("abc", WindowActionKind::SetFloating), &d)[0].classic, "setfloating address:0xabc");
+        for refused in [WindowActionKind::SetTiled, WindowActionKind::TogglePinned, WindowActionKind::Minimize] {
+            assert_eq!(window_dispatch(&act("abc", refused), &d).unwrap_err().code, ErrorCode::Invalid, "{refused:?} on a tiled window");
+        }
+        d.windows[0].floating = true;
+        d.windows[0].actions = nyx_shell_proto::window::available(&d.windows[0], &here);
+        assert_eq!(
+            window_dispatch(&act("abc", WindowActionKind::Minimize), &d).unwrap(),
+            WindowRoute::Run(vec!["omarchy-hyprland-window-minimize".into(), "0xabc".into()])
+        );
+        assert_eq!(steps(&act("abc", WindowActionKind::TogglePinned), &d)[0].classic, "pin address:0xabc");
+        assert!(window_dispatch(&act("abc", WindowActionKind::SetFloating), &d).is_err(), "it floats already");
     }
 }

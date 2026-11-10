@@ -45,7 +45,7 @@ impl Trust {
     /// Classify the program at `exe`.
     pub fn classify(&self, exe: Option<&Path>, pid: Option<i32>) -> Identity {
         use Capability::*;
-        let read_only = || [DesktopRead].into_iter().collect::<BTreeSet<_>>();
+        let read_only = || [DesktopRead, WindowOwn].into_iter().collect::<BTreeSet<_>>();
         let Some(exe) = exe else {
             return Identity { program: "unknown".into(), pid, capabilities: read_only() };
         };
@@ -53,7 +53,7 @@ impl Trust {
         let trusted = nyx_peer::program_in(exe, &self.own_dir, &self.trusted_dirs);
         let (program, capabilities) = match trusted.as_deref() {
             Some("nyx-shellctl") => ("nyx-shellctl".to_string(), Capability::ALL.into_iter().collect()),
-            Some("nyx-settings") => ("nyx-settings".to_string(), [DesktopRead, ConfigWrite].into_iter().collect()),
+            Some("nyx-settings") => ("nyx-settings".to_string(), [DesktopRead, ConfigWrite, WindowOwn].into_iter().collect()),
             Some("quickshell") => ("quickshell".to_string(), ui()),
             _ if self.ui_runtimes.iter().any(|r| r == exe) => ("quickshell".to_string(), ui()),
             _ => (name, read_only()),
@@ -64,7 +64,7 @@ impl Trust {
 
 fn ui() -> BTreeSet<Capability> {
     use Capability::*;
-    [DesktopRead, DesktopAct, OverlayManage, ComponentRegister, ActionInvoke].into_iter().collect()
+    [DesktopRead, DesktopAct, OverlayManage, ComponentRegister, ActionInvoke, WindowOwn].into_iter().collect()
 }
 
 /// The executable a process runs.
@@ -113,7 +113,7 @@ mod tests {
     fn unknown_programs_read_only() {
         let id = trust().classify(Some(Path::new("/usr/bin/python3")), None);
         assert_eq!(id.program, "python3");
-        assert_eq!(id.capabilities.len(), 1);
+        assert_eq!(id.capabilities, [Capability::DesktopRead, Capability::WindowOwn].into_iter().collect());
         assert_eq!(trust().classify(None, None).program, "unknown");
     }
 }

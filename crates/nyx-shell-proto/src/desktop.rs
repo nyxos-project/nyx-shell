@@ -1,5 +1,6 @@
 //! The normalized desktop: monitors, workspaces, windows, and deltas between states.
 
+use crate::frame::WindowActionKind;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -132,6 +133,42 @@ pub struct WindowState {
     pub pinned: bool,
     pub urgent: bool,
     pub focus_order: i32,
+    /// The process that owns it; an app finds its own windows by it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pid: Option<i32>,
+    /// How its window controls are presented, when a rule or the app decides it;
+    /// otherwise the compositor's decorations choose.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub controls: Option<Controls>,
+    /// The window actions that can run on it now. Every window can at least close, so
+    /// an empty list means a server that doesn't send them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub actions: Vec<WindowActionKind>,
+}
+
+/// How a window's controls are presented (`[window_controls]` in `shell.toml`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Controls {
+    /// A Nyx app: one Close button in its own header, the rest in its popover.
+    NativeNyx,
+    /// No usable controls of its own: a Nyx headerbar from the compositor.
+    CustomHeaderbar,
+    /// Intentionally without chrome (terminals): a small control while it floats.
+    ChromelessFloating,
+    /// Its own controls work: nothing is added.
+    PreserveNative,
+}
+
+impl Controls {
+    pub fn name(self) -> &'static str {
+        match self {
+            Controls::NativeNyx => "native-nyx",
+            Controls::CustomHeaderbar => "custom-headerbar",
+            Controls::ChromelessFloating => "chromeless-floating",
+            Controls::PreserveNative => "preserve-native",
+        }
+    }
 }
 
 /// Upserts and removals for one collection.
@@ -379,5 +416,24 @@ mod tests {
         let v = serde_json::to_value(&m).unwrap();
         assert_eq!(v["virtual"], true);
         assert_eq!(serde_json::to_value(Fullscreen::Maximized).unwrap(), "maximized");
+        assert_eq!(serde_json::to_value(Controls::ChromelessFloating).unwrap(), Controls::ChromelessFloating.name());
+    }
+
+    #[test]
+    fn window_controls_fields_stay_optional() {
+        let plain = serde_json::to_value(win("a", 1, 0)).unwrap();
+        for key in ["pid", "controls", "actions"] {
+            assert!(plain.get(key).is_none(), "{key}");
+        }
+        let w = WindowState {
+            pid: Some(7),
+            controls: Some(Controls::NativeNyx),
+            actions: vec![WindowActionKind::Close, WindowActionKind::SetFloating],
+            ..win("a", 1, 0)
+        };
+        let v = serde_json::to_value(&w).unwrap();
+        assert_eq!(v["controls"], "native-nyx");
+        assert_eq!(v["actions"], serde_json::json!(["close", "set_floating"]));
+        assert_eq!(serde_json::from_value::<WindowState>(v).unwrap(), w);
     }
 }

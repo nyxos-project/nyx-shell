@@ -85,6 +85,10 @@ pub fn normalize(d: &Desktop, generation: u64) -> DesktopState {
             pinned: w.pinned,
             urgent: w.urgent,
             focus_order: w.focus_order,
+            pid: (w.pid > 0).then_some(w.pid),
+            // Filled in from the settings by `window::annotate`.
+            controls: None,
+            actions: Vec::new(),
         })
         .collect();
     let focused = d.focused_monitor();

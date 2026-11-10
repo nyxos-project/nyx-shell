@@ -3,7 +3,7 @@
 
 mod shortcuts;
 
-use nyx_shell_proto::{EventFrame, Op, RawRequest, Reply, Topic};
+use nyx_shell_proto::{ConfigState, EventFrame, Op, RawRequest, Reply, Topic, WindowAction, WindowActionKind};
 use serde_json::{Value, json};
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
@@ -29,6 +29,14 @@ Usage: nyx-shellctl COMMAND
   shortcuts --apply [--file PATH] [--no-reload]
                              Write ~/.config/hypr/nyx-shell.lua, reload Hyprland, and
                              put the old file back if Hyprland reports errors
+  window ADDRESS ACTION [WORKSPACE|MONITOR]
+                             Run a window action (close, set_floating, set_tiled,
+                             toggle_maximized, toggle_fullscreen, toggle_pinned,
+                             minimize, move_to_workspace, move_to_monitor…)
+  window-controls --print    The Hyprland rules [window_controls] makes
+  window-controls --apply [--file PATH] [--no-reload]
+                             Write them to ~/.config/hypr/nyx-window-controls.lua, as
+                             shortcuts --apply does
   bench [N]                  Time N status round trips
   raw OP [BODY-JSON]         Send any operation
 
@@ -156,6 +164,8 @@ fn run(a: &[&str]) -> Result<ExitCode, String> {
         ["config", "reset", key] => op(&mut Client::connect()?, Op::ResetShellConfig { key: key.to_string() })?,
         ["theme"] => op(&mut Client::connect()?, Op::GetThemeGeneration)?,
         ["shortcuts", rest @ ..] => return shortcuts::run(rest),
+        ["window", address, action, rest @ ..] => op(&mut Client::connect()?, window_op(address, action, rest)?)?,
+        ["window-controls", rest @ ..] => window_controls(rest)?,
         ["bench"] => bench(1000)?,
         ["bench", n] => bench(n.parse().map_err(|_| "N is a number")?)?,
         ["raw", o] => pretty(&Client::connect()?.raw(o, Value::Null)?),
@@ -166,6 +176,35 @@ fn run(a: &[&str]) -> Result<ExitCode, String> {
         }
     }
     Ok(ExitCode::SUCCESS)
+}
+
+/// `window ADDRESS ACTION [TARGET]`: the target is the workspace or monitor the move
+/// actions need.
+fn window_op(address: &str, action: &str, rest: &[&str]) -> Result<Op, String> {
+    let action: WindowActionKind = serde_json::from_value(json!(action)).map_err(|_| format!("unknown window action {action}"))?;
+    let target = rest.first().map(|s| s.to_string());
+    Ok(Op::RequestWindowAction(WindowAction {
+        window: address.trim_start_matches("0x").to_ascii_lowercase(),
+        action,
+        workspace: (action == WindowActionKind::MoveToWorkspace).then(|| target.clone()).flatten(),
+        monitor: (action == WindowActionKind::MoveToMonitor).then_some(target).flatten(),
+        follow: false,
+    }))
+}
+
+fn window_controls(args: &[&str]) -> Result<(), String> {
+    let (print, apply) = (args.contains(&"--print"), args.contains(&"--apply"));
+    if print == apply {
+        return Err("give --print or --apply".into());
+    }
+    let config: ConfigState = serde_json::from_value(Client::connect()?.call(&Op::GetShellConfig)?).map_err(|e| e.to_string())?;
+    let text = nyx_shell_proto::window::rules_lua(&config.config.window_controls);
+    if print {
+        print!("{text}");
+        return Ok(());
+    }
+    let file = shortcuts::file_arg(args).unwrap_or_else(|| shortcuts::hypr_file("nyx-window-controls.lua"));
+    shortcuts::install(&file, &text, !args.contains(&"--no-reload"))
 }
 
 fn status(s: &Value) {

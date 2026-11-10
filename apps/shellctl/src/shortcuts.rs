@@ -59,12 +59,13 @@ pub fn file_text(wanted: &[(String, Shortcut)]) -> Result<String, String> {
     Ok(out)
 }
 
-fn default_file() -> PathBuf {
+/// `~/.config/hypr/NAME` (or under `$XDG_CONFIG_HOME`).
+pub fn hypr_file(name: &str) -> PathBuf {
     let config = std::env::var_os("XDG_CONFIG_HOME")
         .map(PathBuf::from)
         .filter(|p| p.is_absolute())
         .unwrap_or_else(|| PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".config"));
-    config.join("hypr/nyx-shell.lua")
+    config.join("hypr").join(name)
 }
 
 fn hyprctl_json(args: &[&str]) -> Result<serde_json::Value, String> {
@@ -79,7 +80,7 @@ pub fn run(args: &[&str]) -> Result<ExitCode, String> {
         return Err("give --check or --apply".into());
     }
     let reload = !args.contains(&"--no-reload");
-    let file = args.iter().position(|a| *a == "--file").and_then(|i| args.get(i + 1)).map(PathBuf::from).unwrap_or_else(default_file);
+    let file = file_arg(args).unwrap_or_else(|| hypr_file("nyx-shell.lua"));
 
     let config: ConfigState = serde_json::from_value(Client::connect()?.call(&Op::GetShellConfig)?).map_err(|e| e.to_string())?;
     let wanted: Vec<(String, Shortcut)> = config
@@ -107,24 +108,35 @@ pub fn run(args: &[&str]) -> Result<ExitCode, String> {
         println!("no conflicts");
         return Ok(ExitCode::SUCCESS);
     }
-    let text = file_text(&wanted)?;
-    let previous = std::fs::read(&file).ok();
-    write_atomic(&file, text.as_bytes())?;
+    install(&file, &file_text(&wanted)?, reload)?;
+    Ok(ExitCode::SUCCESS)
+}
+
+/// `--file PATH`.
+pub fn file_arg(args: &[&str]) -> Option<PathBuf> {
+    args.iter().position(|a| *a == "--file").and_then(|i| args.get(i + 1)).map(PathBuf::from)
+}
+
+/// Replace `file` with `text`; with `reload`, reload Hyprland and put the previous file
+/// back if Hyprland reports configuration errors.
+pub fn install(file: &Path, text: &str, reload: bool) -> Result<(), String> {
+    let previous = std::fs::read(file).ok();
+    write_atomic(file, text.as_bytes())?;
     if reload {
         let reloaded = Command::new("hyprctl").arg("reload").output().map_err(|e| format!("hyprctl reload: {e}"))?;
         let errors: Vec<String> = serde_json::from_value(hyprctl_json(&["configerrors"])?).unwrap_or_default();
         let errors: Vec<String> = errors.into_iter().filter(|e| !e.trim().is_empty()).collect();
         if !reloaded.status.success() || !errors.is_empty() {
             match previous {
-                Some(p) => write_atomic(&file, &p)?,
-                None => std::fs::remove_file(&file).map_err(|e| e.to_string())?,
+                Some(p) => write_atomic(file, &p)?,
+                None => std::fs::remove_file(file).map_err(|e| e.to_string())?,
             }
             let _ = Command::new("hyprctl").arg("reload").output();
             return Err(format!("Hyprland reported errors, so the previous file is back: {}", errors.join("; ")));
         }
     }
     println!("wrote {}", file.display());
-    Ok(ExitCode::SUCCESS)
+    Ok(())
 }
 
 fn write_atomic(path: &Path, data: &[u8]) -> Result<(), String> {

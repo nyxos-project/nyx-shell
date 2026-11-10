@@ -33,3 +33,17 @@ include_virtual = false
 # (Super+Space for Glimpse) stay owned there, and one key has one owner.
 [shortcuts]
 # "shell.control-center.toggle" = "SUPER + D"
+
+# Adaptive window controls. `nyx-shellctl window-controls --apply` writes the per-app
+# rules to ~/.config/hypr/nyx-window-controls.lua for the compositor's decorations.
+[window_controls]
+enabled = true
+# How long the pointer rests on a Nyx app's Close button before the other window
+# controls open, in milliseconds (0 to 2000).
+hover_delay_ms = 200
+# Per app, by Wayland app id or X11 class. controls: native-nyx, custom-headerbar,
+# chromeless-floating or preserve-native (terminals are chromeless-floating unless
+# set here); float: open floating (true) or tiled (false).
+# [window_controls.apps."org.kde.dolphin"]
+# controls = "custom-headerbar"
+# float = true

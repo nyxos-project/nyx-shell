@@ -62,7 +62,11 @@ impl Harness {
     }
 
     fn desktop(&mut self, d: nyx_desktop::Desktop) {
-        self.core.handle(Msg::Desktop(Update { desktop: Arc::new(d) }));
+        self.desktop_in(d, Default::default());
+    }
+
+    fn desktop_in(&mut self, d: nyx_desktop::Desktop, context: crate::window::Context) {
+        self.core.handle(Msg::Desktop(Update { desktop: Arc::new(d), context }));
     }
 }
 
@@ -167,6 +171,65 @@ fn window_actions_become_dispatches() {
     let effects = h.core.take_effects();
     let Some(Effect::Dispatch { steps, reply: Some((9, _)) }) = effects.first() else { panic!("a dispatch") };
     assert_eq!(steps[0].classic, "focuswindow address:0xb2");
+}
+
+fn window_action(window: &str, action: nyx_shell_proto::WindowActionKind) -> Op {
+    Op::RequestWindowAction(nyx_shell_proto::WindowAction { window: window.into(), action, workspace: None, monitor: None, follow: false })
+}
+
+#[test]
+fn an_app_acts_on_its_own_windows_only() {
+    use nyx_shell_proto::WindowActionKind as A;
+    let mut h = harness(false);
+    // b2 belongs to pid 101 in the fixture, a1 to 100.
+    let app = Identity { program: "nyx-files".into(), pid: Some(101), capabilities: [Capability::DesktopRead, Capability::WindowOwn].into_iter().collect() };
+    h.connect(1, app, 8);
+    h.connect(2, reader(), 8);
+    h.desktop(crate::state::tests::desktop());
+    h.core.take_effects();
+    assert_eq!(h.call(1, window_action("b2", A::SetFloating)).unwrap_err().code, ErrorCode::Internal, "deferred to the dispatch");
+    let effects = h.core.take_effects();
+    let Some(Effect::Dispatch { steps, .. }) = effects.first() else { panic!("a dispatch") };
+    assert_eq!(steps[0].classic, "setfloating address:0xb2");
+    assert_eq!(h.call(1, window_action("a1", A::Close)).unwrap_err().code, ErrorCode::Forbidden, "another app's window");
+    assert_eq!(h.call(1, window_action("b2", A::Focus)).unwrap_err().code, ErrorCode::Forbidden, "no focus stealing");
+    assert_eq!(h.call(1, window_action("ffff", A::Close)).unwrap_err().code, ErrorCode::Forbidden, "a window that's gone isn't its own");
+    assert_eq!(h.call(2, window_action("b2", A::Close)).unwrap_err().code, ErrorCode::Forbidden, "without window.own");
+    assert!(h.core.take_effects().is_empty());
+}
+
+#[test]
+fn windows_carry_their_controls_and_actions() {
+    use nyx_shell_proto::{Controls, WindowActionKind as A};
+    let mut h = harness(false);
+    h.connect(1, Identity::trusted("nyx-shellctl"), 64);
+    let mut d = crate::state::tests::desktop();
+    d.windows[1].floating = true;
+    h.desktop_in(d.clone(), crate::window::Context { minimize_workspaces: [2].into() });
+    let sub = h.call(1, Op::SubscribeDesktopChanges).unwrap();
+    let state: DesktopState = serde_json::from_value(sub["state"].clone()).unwrap();
+    let kitty = state.window("b2").unwrap();
+    assert_eq!(kitty.controls, Some(Controls::ChromelessFloating));
+    assert_eq!(kitty.pid, Some(101));
+    assert!(kitty.actions.contains(&A::SetTiled) && kitty.actions.contains(&A::Minimize));
+    assert_eq!(state.window("a1").unwrap().controls, None);
+    assert_eq!(state.window("c3").unwrap().actions, [A::Focus, A::Close], "minimized");
+
+    h.call(1, Op::UpdateShellConfig { key: "window_controls.apps".into(), value: json!({"firefox": {"controls": "custom-headerbar"}}) })
+        .unwrap();
+    let ev: Vec<EventFrame> = h.events(1).into_iter().filter(|e| e.ev == "DesktopChanged").collect();
+    assert_eq!(ev.len(), 1, "a rule change reaches the windows at once");
+    let delta: nyx_shell_proto::DesktopDelta = serde_json::from_value(ev[0].body.clone()).unwrap();
+    assert_eq!(delta.windows.upsert.len(), 1);
+    assert_eq!(delta.windows.upsert[0].controls, Some(Controls::CustomHeaderbar));
+
+    h.core.take_effects();
+    let (tx, _rx) = oneshot::channel();
+    h.core.handle(Msg::Request { client: 1, id: 4, op: window_action("b2", A::Minimize), reply: tx });
+    let effects = h.core.take_effects();
+    let Some(Effect::Run { argv, .. }) = effects.first() else { panic!("Omarchy's minimize") };
+    assert_eq!(argv, &["omarchy-hyprland-window-minimize", "0xb2"]);
+    assert_eq!(h.call(1, window_action("a1", A::Minimize)).unwrap_err().code, ErrorCode::Invalid, "a tiled window doesn't minimize");
 }
 
 #[test]

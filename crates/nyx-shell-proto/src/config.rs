@@ -3,6 +3,7 @@
 //! Each section is read on its own: one that doesn't parse or validate falls back to
 //! its defaults and is reported, so one mistake never takes the others down.
 
+use crate::desktop::Controls;
 use crate::overlay::{FullscreenRule, Placement};
 use crate::shortcut::Shortcut;
 use serde::de::DeserializeOwned;
@@ -21,6 +22,41 @@ pub struct ShellConfig {
     /// Keys for actions: `"shell.control-center.toggle" = "SUPER + D"`. Empty by default,
     /// so the keys NyxOS's Hyprland config binds stay owned there.
     pub shortcuts: BTreeMap<String, String>,
+    pub window_controls: WindowControlsConfig,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct WindowControlsConfig {
+    /// Adaptive window controls at all. Off, apps keep what they draw and nothing is
+    /// added.
+    pub enabled: bool,
+    /// How long the pointer rests on a Nyx app's Close button before the other window
+    /// controls open.
+    pub hover_delay_ms: u64,
+    /// Per app, by Wayland app id or X11 class. A value here wins over the built-in
+    /// rules; layers merge app by app.
+    pub apps: BTreeMap<String, AppWindowRule>,
+}
+
+impl Default for WindowControlsConfig {
+    fn default() -> Self {
+        WindowControlsConfig { enabled: true, hover_delay_ms: 200, apps: BTreeMap::new() }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct AppWindowRule {
+    pub controls: Option<Controls>,
+    /// Open floating (true) or tiled (false); unset leaves it to Hyprland.
+    pub float: Option<bool>,
+}
+
+/// An app id or class as `[window_controls.apps]` takes it: 1 to 128 of
+/// `[A-Za-z0-9._+-]`, so it goes into a Hyprland rule without escaping beyond `.` and `+`.
+pub fn valid_app_id(id: &str) -> bool {
+    !id.is_empty() && id.len() <= 128 && id.bytes().all(|b| b.is_ascii_alphanumeric() || b"._+-".contains(&b))
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -102,7 +138,7 @@ pub struct ConfigState {
     pub errors: Vec<String>,
 }
 
-const SECTIONS: [&str; 6] = ["focus", "ipc", "log", "monitors", "overlays", "shortcuts"];
+const SECTIONS: [&str; 7] = ["focus", "ipc", "log", "monitors", "overlays", "shortcuts", "window_controls"];
 
 impl ShellConfig {
     /// Read merged settings. Returns the config and the problems found.
@@ -160,6 +196,18 @@ impl ShellConfig {
                     return Err(format!("invalid action id {action:?}"));
                 }
                 Shortcut::parse(keys).map_err(|e| format!("{action}: {e}"))?;
+            }
+            Ok(())
+        });
+        section(table, "window_controls", &mut c.window_controls, &mut errors, |w| {
+            if w.hover_delay_ms > 2000 {
+                return Err("hover_delay_ms is at most 2000".into());
+            }
+            if w.apps.len() > 256 {
+                return Err("at most 256 apps".into());
+            }
+            if let Some(id) = w.apps.keys().find(|id| !valid_app_id(id)) {
+                return Err(format!("invalid app id {id:?}: 1 to 128 of A-Z a-z 0-9 . _ + -"));
             }
             Ok(())
         });
@@ -254,5 +302,38 @@ mod tests {
         assert_eq!(c.overlays["nyx.inspector"].fullscreen, Some(FullscreenRule::Block));
         assert_eq!(c.overlays["nyx.inspector"].placement, Some(Placement::Monitor("DP-2".into())));
         assert!(!c.monitors.screens["Dell Inc.|U2723QE|ABC"].enabled);
+    }
+
+    #[test]
+    fn window_controls() {
+        let (c, e) = read(
+            r#"
+            [window_controls]
+            hover_delay_ms = 350
+            [window_controls.apps.foot]
+            controls = "chromeless-floating"
+            float = true
+            [window_controls.apps."org.kde.dolphin"]
+            controls = "custom-headerbar"
+            "#,
+        );
+        assert!(e.is_empty(), "{e:?}");
+        assert!(c.window_controls.enabled);
+        assert_eq!(c.window_controls.hover_delay_ms, 350);
+        assert_eq!(c.window_controls.apps["foot"], AppWindowRule { controls: Some(Controls::ChromelessFloating), float: Some(true) });
+        assert_eq!(c.window_controls.apps["org.kde.dolphin"].float, None);
+
+        for bad in [
+            "[window_controls]\nhover_delay_ms = 9000\n",
+            "[window_controls.apps.\"a b\"]\ncontrols = \"native-nyx\"\n",
+            "[window_controls.apps.foot]\ncontrols = \"sideways\"\n",
+            "[window_controls.apps.foot]\nfloating = true\n",
+        ] {
+            let (c, e) = read(bad);
+            assert_eq!(e.len(), 1, "{bad}: {e:?}");
+            assert_eq!(c.window_controls, WindowControlsConfig::default(), "{bad}");
+        }
+        assert!(valid_app_id("io.github.design_nexus.nyx.Files") && valid_app_id("steam_app_1"));
+        assert!(!valid_app_id("") && !valid_app_id("x\"y") && !valid_app_id("^foot$"));
     }
 }

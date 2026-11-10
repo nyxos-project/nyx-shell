@@ -17,6 +17,7 @@ pub mod server;
 pub mod session;
 pub mod state;
 pub mod theme;
+pub mod window;
 
 /// A connection, numbered from 1 for the life of the process.
 pub type ClientId = u64;

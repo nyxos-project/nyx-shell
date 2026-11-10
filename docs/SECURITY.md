@@ -59,19 +59,25 @@ flowchart LR
 | `component.register` | Register components and report their health |
 | `action.invoke` | `InvokeAction` |
 | `config.write` | `UpdateShellConfig`, `ResetShellConfig` |
+| `window.own` | `RequestWindowAction` on windows of the client's own process, except `focus` |
 
 How a client is classified (`peer.rs`), from `/proc/PID/exe` at connect time:
 
 | Client | How recognized | Capabilities |
 | --- | --- | --- |
 | `nyx-shellctl` | `nyx_peer::program`: in Shell Core's own folder or a folder listed in root-owned `/etc/nyx/trusted-bin` | all |
-| `nyx-settings` | same | `desktop.read`, `config.write` |
-| Quickshell runtime | executable named `quickshell` in a trusted folder, or a path in `ipc.ui_runtimes` (default `/usr/bin/quickshell`; a change applies to new connections) | `desktop.read`, `desktop.act`, `overlay.manage`, `component.register`, `action.invoke` |
-| anything else of the same user | | `desktop.read` |
+| `nyx-settings` | same | `desktop.read`, `config.write`, `window.own` |
+| Quickshell runtime | executable named `quickshell` in a trusted folder, or a path in `ipc.ui_runtimes` (default `/usr/bin/quickshell`; a change applies to new connections) | `desktop.read`, `desktop.act`, `overlay.manage`, `component.register`, `action.invoke`, `window.own` |
+| anything else of the same user | | `desktop.read`, `window.own` |
 
 Quickshell runs any QML it is given, so recognizing it by executable grants those
 capabilities to any same-user program willing to start it. That is accepted because
 none of them reach beyond what `hyprctl` already offers, and none is sensitive.
+
+`window.own` lets a Nyx app float, maximize, pin or close its own window through Shell
+Core, as its window controls do, without being able to touch any other window. The
+window's process id (from Hyprland) must equal the client's (`SO_PEERCRED`). `focus` is
+left out, so an app can't take focus through Shell Core.
 
 ## Input handling
 

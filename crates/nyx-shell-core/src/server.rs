@@ -215,6 +215,12 @@ fn carry_out(effect: Effect, o: &ServerOptions, bridge: Option<&mpsc::UnboundedS
             let r = launch(&argv).map(|()| serde_json::json!(Routed { routed: "launch".into() }));
             reply(to, r);
         }
+        Effect::Run { argv, reply: to } => {
+            tokio::spawn(async move {
+                let r = run_to_end(&argv).await.map(|()| serde_json::json!({}));
+                reply(to, r);
+            });
+        }
         Effect::ResolvePointer { client, overlay, reply: to } => {
             let compositor = o.compositor.clone();
             let inbox = inbox.clone();
@@ -243,6 +249,23 @@ fn launch(argv: &[String]) -> Result<(), ErrorBody> {
     });
     Ok(())
 }
+
+/// Run a built-in program and wait for it, at most [`RUN_TIMEOUT`].
+async fn run_to_end(argv: &[String]) -> Result<(), ErrorBody> {
+    let (program, args) = argv.split_first().ok_or_else(|| ErrorBody::new(ErrorCode::Internal, "nothing to run"))?;
+    let mut cmd = tokio::process::Command::new(program);
+    cmd.args(args).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).kill_on_drop(true);
+    let unavailable = |e: String| ErrorBody::new(ErrorCode::Unavailable, format!("{program}: {e}"));
+    let mut child = cmd.spawn().map_err(|e| unavailable(e.to_string()))?;
+    match tokio::time::timeout(RUN_TIMEOUT, child.wait()).await {
+        Ok(Ok(s)) if s.success() => Ok(()),
+        Ok(Ok(s)) => Err(unavailable(s.to_string())),
+        Ok(Err(e)) => Err(unavailable(e.to_string())),
+        Err(_) => Err(unavailable("didn't finish in time".into())),
+    }
+}
+
+const RUN_TIMEOUT: Duration = Duration::from_secs(5);
 
 async fn accept(listener: UnixListener, tx: mpsc::UnboundedSender<Msg>, trust: tokio::sync::watch::Receiver<Trust>, max_queue: usize) {
     // SAFETY: getuid has no preconditions.

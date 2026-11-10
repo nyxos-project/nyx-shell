@@ -13,13 +13,14 @@ pub mod overlay;
 pub mod session;
 pub mod shortcut;
 pub mod theme;
+pub mod window;
 
 pub use action::{ActionInfo, Routed};
 pub use component::{ComponentKind, ComponentManifest, ComponentState, ComponentStatus, HealthReport, RestartPolicy};
-pub use config::{ConfigState, ShellConfig};
+pub use config::{AppWindowRule, ConfigState, ShellConfig, WindowControlsConfig};
 pub use desktop::{
-    Active, Collection, DesktopDelta, DesktopState, Fullscreen, MonitorState, PhysicalState, RegionState, WindowState, WorkspaceState,
-    StaleDelta,
+    Active, Collection, Controls, DesktopDelta, DesktopState, Fullscreen, MonitorState, PhysicalState, RegionState, WindowState,
+    WorkspaceState, StaleDelta,
 };
 pub use frame::{
     Capability, ErrorBody, ErrorCode, Event, EventFrame, Hello, HelloReply, Op, RawRequest, Reply, Topic, MAX_LINE,

@@ -155,6 +155,18 @@ Capabilities are in brackets.
     they are `user` workspaces and carry `"number"`, the 1 to 10 a user sees. Every
     user workspace has `number`. `region`, `physical` and `number` are absent where they
     don't apply, so clients that don't know them see the same JSON as before.
+  - Window controls (all optional): `"pid":4242`, the process that owns the window, so
+    an app finds its own windows; `"controls"`, how its window controls are presented
+    (`native-nyx`, `custom-headerbar`, `chromeless-floating`, `preserve-native`), absent
+    when no rule decides it and the compositor's decorations choose; `"actions"`, the
+    window actions it can take now (below). Presentations show only what `actions`
+    lists.
+
+    Resolution of `controls`: `[window_controls.apps]` in `shell.toml` for the app id or
+    initial app id, then the built-in rules (terminals are `chromeless-floating`), then
+    `native-nyx` for ids starting `io.github.design_nexus.nyx.`. `window_controls.enabled
+    = false` leaves it absent for every window. A settings change updates the windows at
+    once (a `DesktopChanged`).
 
 - `SubscribeDesktopChanges` [desktop.read] → `{seq, state}`. Event `DesktopChanged`:
 
@@ -173,11 +185,26 @@ Capabilities are in brackets.
 - `RequestWorkspaceAction` [desktop.act] `{action, workspace?, name?}`:
   - `{"action":"focus","workspace":"3"}`: show workspace 3 (an id, or `name:…`).
   - `{"action":"toggle_special","name":"scratch"}`: show or hide a special workspace.
-- `RequestWindowAction` [desktop.act] `{window, action, workspace?, monitor?, follow?}`:
-  `focus`, `close`, `toggle_floating`, `toggle_maximized`,
-  `move_to_workspace` (`workspace`, `follow`), `move_to_monitor` (`monitor`).
-  The window and monitor must exist in the current state; workspace strings are
-  limited to ids, `name:` and `special:` names of `[A-Za-z0-9_-]`.
+- `RequestWindowAction` [desktop.act, or window.own for the client's own windows]
+  `{window, action, workspace?, monitor?, follow?}`. The window and monitor must exist
+  in the current state, and the action must be in the window's `actions` (else
+  `invalid`); workspace strings are limited to ids, `name:` and `special:` names of
+  `[A-Za-z0-9_-]`.
+
+  | Action | Available | Does |
+  | --- | --- | --- |
+  | `focus` | always | Brings it to the user (restores a minimized window) |
+  | `close` | always | Asks it to close |
+  | `toggle_floating` | not fullscreen | Floats or tiles it |
+  | `set_floating`, `set_tiled` | tiled, floating (not fullscreen) | Floats or tiles it; nothing if it already is |
+  | `toggle_maximized` | not fullscreen | Floating: fills the work area. Tiled: expands over its layout and stays tiled. Again: back |
+  | `toggle_fullscreen` | not minimized | True fullscreen, separate from maximizing |
+  | `toggle_pinned` | floating, not fullscreen | On every workspace of its monitor |
+  | `minimize` | floating, on a workspace it can come back from (Omarchy's floating workspaces); never on NyxOS | Omarchy's minimize, to `special:minimized` |
+  | `move_to_workspace` | not pinned | `workspace`, `follow` |
+  | `move_to_monitor` | not minimized | `monitor` |
+
+  A minimized window takes only `focus` and `close`.
 
 Both reply `{}` once Hyprland accepted the dispatch, `read_only` in read-only mode,
 `unavailable` when Hyprland is unreachable.

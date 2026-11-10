@@ -66,13 +66,25 @@ pub enum WorkspaceAction {
     ToggleSpecial { name: String },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum WindowActionKind {
     Focus,
     Close,
     ToggleFloating,
+    /// Float a tiled window; nothing for one that floats already.
+    SetFloating,
+    /// Tile a floating window; nothing for a tiled one.
+    SetTiled,
+    /// Maximize a floating window, or expand a tiled one over its layout (it stays
+    /// tiled); again restores it.
     ToggleMaximized,
+    /// True fullscreen, separate from maximizing.
+    ToggleFullscreen,
+    /// Show a floating window on every workspace of its monitor.
+    TogglePinned,
+    /// Hide the window where it can be brought back (Omarchy's floating workspaces).
+    Minimize,
     MoveToWorkspace,
     MoveToMonitor,
 }
@@ -270,16 +282,21 @@ pub enum Capability {
     ActionInvoke,
     #[serde(rename = "config.write")]
     ConfigWrite,
+    /// `RequestWindowAction` on the client's own windows (the same process id), except
+    /// `focus`.
+    #[serde(rename = "window.own")]
+    WindowOwn,
 }
 
 impl Capability {
-    pub const ALL: [Capability; 6] = [
+    pub const ALL: [Capability; 7] = [
         Capability::DesktopRead,
         Capability::DesktopAct,
         Capability::OverlayManage,
         Capability::ComponentRegister,
         Capability::ActionInvoke,
         Capability::ConfigWrite,
+        Capability::WindowOwn,
     ];
 
     pub fn name(self) -> &'static str {
@@ -290,6 +307,7 @@ impl Capability {
             Capability::ComponentRegister => "component.register",
             Capability::ActionInvoke => "action.invoke",
             Capability::ConfigWrite => "config.write",
+            Capability::WindowOwn => "window.own",
         }
     }
 }
