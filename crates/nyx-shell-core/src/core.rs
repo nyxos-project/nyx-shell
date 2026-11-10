@@ -74,6 +74,8 @@ pub enum Effect {
     ResolvePointer { client: ClientId, overlay: String, reply: ReplyTo },
     /// Tell systemd the session is ready.
     Ready,
+    /// Remember which workspace each virtual monitor shows, for the next login.
+    SaveVirtualSession(nyx_desktop::virtual_monitors::SessionState),
 }
 
 struct Client {
@@ -91,6 +93,8 @@ pub struct Options {
     pub theme: ThemeSource,
     pub env: Environment,
     pub session_id: String,
+    /// Which workspace each virtual monitor showed last session.
+    pub virtual_session: nyx_desktop::virtual_monitors::SessionState,
 }
 
 pub struct Core {
@@ -119,6 +123,10 @@ pub struct Core {
     dropped: u64,
     resyncs: u64,
     effects: Vec<Effect>,
+    /// Which workspace each virtual monitor shows, and whether last session's was
+    /// brought back yet.
+    virtual_session: nyx_desktop::virtual_monitors::SessionState,
+    virtual_restored: bool,
 }
 
 fn err(code: ErrorCode, msg: impl Into<String>) -> ErrorBody {
@@ -175,6 +183,8 @@ impl Core {
             dropped: 0,
             resyncs: 0,
             effects: Vec::new(),
+            virtual_session: o.virtual_session,
+            virtual_restored: false,
         };
         core.actions = actions::list(&core.env, &core.overlays, &core.components);
         core
@@ -512,6 +522,33 @@ impl Core {
         self.raw = u.desktop;
         self.follow_panel_layers();
         self.rebuild();
+        self.follow_virtual_monitors();
+    }
+
+    /// Bring each virtual monitor back to the workspace it showed last session, once,
+    /// and from then on remember what each shows.
+    fn follow_virtual_monitors(&mut self) {
+        if self.read_only || !self.raw.connected || self.raw.hosts.is_empty() {
+            return;
+        }
+        if !self.virtual_restored {
+            self.virtual_restored = true;
+            let plan = self.virtual_session.plan(&self.raw);
+            if !plan.is_empty() {
+                let mut steps: Vec<Dispatch> = plan
+                    .iter()
+                    .map(|id| Dispatch { lua: format!("hl.dsp.focus({{ workspace = \"{id}\" }})"), classic: format!("workspace {id}") })
+                    .collect();
+                if let Some(m) = self.raw.focused_monitor() {
+                    steps.push(Dispatch { lua: format!("hl.dsp.focus({{ monitor = \"{}\" }})", m.name), classic: format!("focusmonitor {}", m.name) });
+                }
+                self.effects.push(Effect::Dispatch { steps, reply: None });
+                return;
+            }
+        }
+        if self.virtual_session.remember(&self.raw) {
+            self.effects.push(Effect::SaveVirtualSession(self.virtual_session.clone()));
+        }
     }
 
     /// A GTK panel is open while its layer surface is mapped: Hyprland reports it

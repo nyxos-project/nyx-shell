@@ -12,6 +12,38 @@ pub struct DesktopState {
     pub workspaces: Vec<WorkspaceState>,
     pub windows: Vec<WindowState>,
     pub active: Active,
+    /// Physical screens split into virtual monitors (whose regions are in `monitors`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub physical: Vec<PhysicalState>,
+}
+
+/// A physical screen split into virtual monitors. It isn't a monitor of its own: nothing
+/// is shown on it directly, and it has no workspaces.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct PhysicalState {
+    pub name: String,
+    pub stable_id: String,
+    pub description: String,
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
+    pub scale: f64,
+    /// Its regions' monitor names, left to right.
+    pub regions: Vec<String>,
+}
+
+/// Where a virtual monitor sits on its physical screen.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct RegionState {
+    /// The physical screen's connector name and stable id.
+    pub physical: String,
+    pub physical_id: String,
+    /// 1-based, left to right.
+    pub index: u32,
+    pub count: u32,
+    /// Its own workspaces are `workspace_base + 1` to `+ 10`.
+    pub workspace_base: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
@@ -47,6 +79,10 @@ pub struct MonitorState {
     pub special_workspace: Option<i64>,
     /// Left, top, right, bottom, logical pixels.
     pub reserved: [i32; 4],
+    /// Set when this monitor is a virtual monitor (a region of a physical screen).
+    /// `stable_id` is then the screen's followed by `#v<index>`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub region: Option<RegionState>,
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
@@ -57,8 +93,12 @@ pub struct WorkspaceState {
     /// Shown on its monitor (as the active or the open special workspace).
     pub active: bool,
     pub special: bool,
-    /// One of the user's workspaces, 1 to 10.
+    /// One of the user's workspaces: 1 to 10, or a virtual monitor's own.
     pub user: bool,
+    /// The number the user sees (1 to 10) for a user workspace; a virtual monitor's
+    /// workspace 203 is its 3.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub number: Option<u32>,
     pub has_fullscreen: bool,
     /// Window addresses, most recently focused first.
     pub windows: Vec<String>,
@@ -123,6 +163,9 @@ pub struct DesktopDelta {
     pub workspaces: Collection<WorkspaceState, i64>,
     pub windows: Collection<WindowState, String>,
     pub active: Option<Active>,
+    /// The whole list of split physical screens, when it changed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub physical: Option<Vec<PhysicalState>>,
 }
 
 impl DesktopDelta {
@@ -130,6 +173,7 @@ impl DesktopDelta {
     pub fn is_empty(&self) -> bool {
         self.connected.is_none()
             && self.active.is_none()
+            && self.physical.is_none()
             && self.monitors.is_empty()
             && self.workspaces.is_empty()
             && self.windows.is_empty()
@@ -162,6 +206,7 @@ impl DesktopState {
             workspaces: diff(&old.workspaces, &self.workspaces, |w| w.id),
             windows: diff(&old.windows, &self.windows, |w| w.address.clone()),
             active: (self.active != old.active).then(|| self.active.clone()),
+            physical: (self.physical != old.physical).then(|| self.physical.clone()),
         }
     }
 
@@ -181,6 +226,9 @@ impl DesktopState {
         self.windows.sort_by_key(|w| w.focus_order);
         if let Some(a) = &delta.active {
             self.active = a.clone();
+        }
+        if let Some(p) = &delta.physical {
+            self.physical = p.clone();
         }
         self.generation = delta.generation;
         Ok(())
@@ -243,7 +291,28 @@ mod tests {
             workspaces: vec![WorkspaceState { id: 1, name: "1".into(), monitor: "eDP-1".into(), active: true, user: true, windows: vec!["a".into()], ..Default::default() }],
             windows: vec![win("a", 1, 0)],
             active: Active { monitor: Some("eDP-1".into()), workspace: Some(1), window: Some("a".into()) },
+            physical: vec![],
         }
+    }
+
+    #[test]
+    fn virtual_monitors_round_trip_and_stay_optional() {
+        let old = state();
+        let mut new = old.clone();
+        new.generation = 2;
+        new.monitors[0].region = Some(RegionState { physical: "DP-3".into(), physical_id: "S|O|H".into(), index: 1, count: 2, workspace_base: 0 });
+        new.physical = vec![PhysicalState { name: "DP-3".into(), regions: vec!["eDP-1".into()], ..Default::default() }];
+        let d = new.delta_from(&old);
+        assert!(d.physical.is_some());
+        let mut applied = old.clone();
+        applied.apply(&d).unwrap();
+        assert_eq!(applied, new);
+
+        let plain = serde_json::to_value(&old).unwrap();
+        assert!(plain.get("physical").is_none(), "clients without virtual monitors see the same JSON as before");
+        assert!(plain["monitors"][0].get("region").is_none());
+        let back: DesktopState = serde_json::from_value(plain).unwrap();
+        assert_eq!(back, old);
     }
 
     #[test]

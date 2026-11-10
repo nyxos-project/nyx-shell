@@ -1,7 +1,7 @@
 //! From `nyx_desktop`'s model to the wire's normalized desktop.
 
 use nyx_desktop::Desktop;
-use nyx_shell_proto::{Active, DesktopState, Fullscreen, MonitorState, WindowState, WorkspaceState};
+use nyx_shell_proto::{Active, DesktopState, Fullscreen, MonitorState, PhysicalState, RegionState, WindowState, WorkspaceState};
 
 /// Omarchy's workspace for minimized windows.
 const MINIMIZED: &str = "special:minimized";
@@ -35,6 +35,13 @@ pub fn normalize(d: &Desktop, generation: u64) -> DesktopState {
                 active_workspace: m.active_workspace,
                 special_workspace: m.special_workspace,
                 reserved: m.reserved,
+                region: d.region(&m.name).map(|r| RegionState {
+                    physical: r.host.clone(),
+                    physical_id: r.host_stable_id.clone(),
+                    index: r.index,
+                    count: r.count,
+                    workspace_base: r.workspace_base,
+                }),
             }
         })
         .collect();
@@ -49,6 +56,7 @@ pub fn normalize(d: &Desktop, generation: u64) -> DesktopState {
             active: shown(w.id),
             special: w.is_special(),
             user: w.is_user(),
+            number: w.number(),
             has_fullscreen: w.has_fullscreen,
             windows: d.windows.iter().filter(|x| x.workspace == w.id).map(|x| x.address.clone()).collect(),
         })
@@ -91,6 +99,21 @@ pub fn normalize(d: &Desktop, generation: u64) -> DesktopState {
             workspace: focused.map(|m| m.active_workspace),
             window: d.active_window.clone(),
         },
+        physical: d
+            .hosts
+            .iter()
+            .map(|h| PhysicalState {
+                name: h.name.clone(),
+                stable_id: h.stable_id.clone(),
+                description: clean(&h.description, 256),
+                x: h.x,
+                y: h.y,
+                width: h.width,
+                height: h.height,
+                scale: h.scale,
+                regions: h.regions.clone(),
+            })
+            .collect(),
     }
 }
 

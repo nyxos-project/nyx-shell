@@ -18,7 +18,8 @@ pub use action::{ActionInfo, Routed};
 pub use component::{ComponentKind, ComponentManifest, ComponentState, ComponentStatus, HealthReport, RestartPolicy};
 pub use config::{ConfigState, ShellConfig};
 pub use desktop::{
-    Active, Collection, DesktopDelta, DesktopState, Fullscreen, MonitorState, WindowState, WorkspaceState, StaleDelta,
+    Active, Collection, DesktopDelta, DesktopState, Fullscreen, MonitorState, PhysicalState, RegionState, WindowState, WorkspaceState,
+    StaleDelta,
 };
 pub use frame::{
     Capability, ErrorBody, ErrorCode, Event, EventFrame, Hello, HelloReply, Op, RawRequest, Reply, Topic, MAX_LINE,

@@ -79,6 +79,11 @@ pub async fn run(
         theme: o.theme.clone(),
         env: Environment::discover(),
         session_id: session::session_id(),
+        virtual_session: if o.hyprland {
+            nyx_desktop::virtual_monitors::SessionState::path().map(|p| nyx_desktop::virtual_monitors::SessionState::load(&p)).unwrap_or_default()
+        } else {
+            Default::default()
+        },
     });
     for e in &core.config().errors {
         tracing::warn!(error = %e, "shell settings");
@@ -157,6 +162,14 @@ fn carry_out(effect: Effect, o: &ServerOptions, bridge: Option<&mpsc::UnboundedS
         Effect::Ready => {
             tracing::info!("ready");
             session::notify("READY=1");
+        }
+        Effect::SaveVirtualSession(state) => {
+            tokio::task::spawn_blocking(move || {
+                let saved = nyx_desktop::virtual_monitors::SessionState::path().and_then(|p| state.save(&p));
+                if let Err(e) = saved {
+                    tracing::debug!(error = %e, "couldn't remember the virtual monitors' workspaces");
+                }
+            });
         }
         Effect::Dispatch { steps, reply: to } => {
             let compositor = o.compositor.clone();

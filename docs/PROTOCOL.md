@@ -144,6 +144,17 @@ Capabilities are in brackets.
   - Titles are untrusted text, cut to 512 characters with control characters removed.
     Render them as plain text.
   - `refresh_rate` is `null` when Hyprland didn't report one.
+  - Virtual monitors (Nyx's Hyprland 0.57.1 and newer, `hl.virtual_monitor`): each
+    region of a split screen is a monitor of its own and also carries
+    `"region":{"physical":"DP-3","physical_id":"…","index":2,"count":3,"workspace_base":200}`.
+    Its `stable_id` is the screen's followed by `#v<index>`, so per-screen settings key
+    each region separately. The split screen itself isn't in `monitors` (nothing is
+    shown on it directly); it is listed in `"physical":[{"name","stable_id",
+    "description","x","y","width","height","scale","regions":["DP-3.v1",…]}]`.
+  - A region's own workspaces are `workspace_base + 1` to `+ 10`, named `1` to `10`;
+    they are `user` workspaces and carry `"number"`, the 1 to 10 a user sees. Every
+    user workspace has `number`. `region`, `physical` and `number` are absent where they
+    don't apply, so clients that don't know them see the same JSON as before.
 
 - `SubscribeDesktopChanges` [desktop.read] → `{seq, state}`. Event `DesktopChanged`:
 
@@ -155,7 +166,8 @@ Capabilities are in brackets.
  "active":{"monitor":"eDP-2","workspace":2,"window":null}}
 ```
 
-  Fields that didn't change are `null` (`connected`, `active`) or empty lists. Apply
+  Fields that didn't change are `null` (`connected`, `active`) or empty lists, or are
+  absent (`physical`, the whole list of split screens when it changed). Apply
   only when `base` equals your generation; otherwise call `GetDesktopSnapshot`.
 
 - `RequestWorkspaceAction` [desktop.act] `{action, workspace?, name?}`:

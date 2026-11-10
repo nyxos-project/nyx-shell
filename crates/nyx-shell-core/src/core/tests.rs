@@ -21,7 +21,14 @@ fn harness(read_only: bool) -> Harness {
         omarchy_dir: dir.path().join("omarchy/current/theme"),
         snapshot_file: dir.path().join("run/nyx/theme/system.json"),
     };
-    let core = Core::new(Options { read_only, config, theme, env: Environment::default(), session_id: "test".into() });
+    let core = Core::new(Options {
+        read_only,
+        config,
+        theme,
+        env: Environment::default(),
+        session_id: "test".into(),
+        virtual_session: Default::default(),
+    });
     Harness { core, _dir: dir, clients: BTreeMap::new() }
 }
 
@@ -366,4 +373,70 @@ fn shutdown_tells_everyone() {
     h.core.handle(Msg::Shutdown);
     assert!(h.events(1).iter().any(|e| e.ev == "Shutdown"));
     assert_eq!(h.core.state(), SessionState::Stopping);
+}
+
+#[test]
+fn virtual_monitors_come_back_then_are_remembered() {
+    let mut h = harness(false);
+    h.core.virtual_session.active.insert("S|O|H".into(), vec![1, 3]);
+
+    let region = |name: &str, active: i64| nyx_desktop::Monitor {
+        id: 0,
+        name: name.into(),
+        description: String::new(),
+        make: "S".into(),
+        model: "O".into(),
+        serial: String::new(),
+        width: 1920,
+        height: 1080,
+        x: 0,
+        y: 0,
+        scale: 1.0,
+        transform: 0,
+        refresh_rate: 60.0,
+        focused: name.ends_with("v1"),
+        disabled: false,
+        active_workspace: active,
+        special_workspace: None,
+        reserved: [0; 4],
+    };
+    let workspace = |id: i64, name: &str, monitor: &str| nyx_desktop::Workspace {
+        id,
+        name: name.into(),
+        monitor: monitor.into(),
+        windows: 0,
+        has_fullscreen: false,
+        tiled_layout: String::new(),
+    };
+    let mut d = nyx_desktop::Desktop { connected: true, ..Default::default() };
+    d.monitors = vec![region("DP-3.v1", 1), region("DP-3.v2", 201)];
+    d.hosts = vec![nyx_desktop::VirtualHost { name: "DP-3".into(), stable_id: "S|O|H".into(), regions: vec!["DP-3.v1".into(), "DP-3.v2".into()], ..Default::default() }];
+    d.regions.insert("DP-3.v2".into(), nyx_desktop::VirtualRegion { host: "DP-3".into(), index: 2, count: 2, workspace_base: 200, ..Default::default() });
+    d.workspaces = vec![workspace(1, "1", "DP-3.v1"), workspace(201, "1", "DP-3.v2"), workspace(203, "3", "DP-3.v2")];
+
+    h.desktop(d.clone());
+    let effects = h.core.take_effects();
+    let steps: Vec<&str> = effects
+        .iter()
+        .filter_map(|e| match e {
+            Effect::Dispatch { steps, .. } => Some(steps.iter().map(|s| s.classic.as_str())),
+            _ => None,
+        })
+        .flatten()
+        .collect();
+    assert_eq!(steps, vec!["workspace 203", "focusmonitor DP-3.v1"], "the right region goes back to its 3, then focus returns");
+    assert!(!effects.iter().any(|e| matches!(e, Effect::SaveVirtualSession(_))), "nothing is remembered before that");
+
+    d.monitors[1].active_workspace = 203;
+    h.desktop(d.clone());
+    assert!(!h.core.take_effects().iter().any(|e| matches!(e, Effect::SaveVirtualSession(_))), "it shows what was remembered");
+
+    d.monitors[0].active_workspace = 2;
+    d.workspaces.push(workspace(2, "2", "DP-3.v1"));
+    h.desktop(d);
+    let saved = h.core.take_effects().into_iter().find_map(|e| match e {
+        Effect::SaveVirtualSession(s) => Some(s),
+        _ => None,
+    });
+    assert_eq!(saved.unwrap().active["S|O|H"], vec![2, 3]);
 }
