@@ -4,7 +4,7 @@
 
 use nyx_desktop::actions::Dispatch;
 use nyx_shell_proto::window::{available, controls};
-use nyx_shell_proto::{DesktopState, WindowControlsConfig};
+use nyx_shell_proto::{Controls, DesktopState, WindowControlsConfig};
 use std::collections::BTreeSet;
 
 /// Omarchy's minimize, which keeps the window on `special:minimized` for the dock.
@@ -16,12 +16,16 @@ pub struct Context {
     /// Workspaces where a window can be minimized and brought back: Omarchy's floating
     /// workspaces, when its minimize is installed. Empty on NyxOS, which has no such place.
     pub minimize_workspaces: BTreeSet<i64>,
+    /// Windows NyxOS's decorations (nyx-decor) gave a headerbar though no rule asked:
+    /// apps that left their decorations to the compositor. Addresses as in
+    /// `WindowState`.
+    pub default_headerbars: BTreeSet<String>,
 }
 
 /// Fill in each window's presentation and actions.
 pub fn annotate(state: &mut DesktopState, cfg: &WindowControlsConfig, ctx: &Context) {
     for w in &mut state.windows {
-        w.controls = controls(w, cfg);
+        w.controls = controls(w, cfg).or_else(|| ctx.default_headerbars.contains(&w.address).then_some(Controls::CustomHeaderbar));
         w.actions = available(w, &ctx.minimize_workspaces);
     }
 }
@@ -69,5 +73,16 @@ mod tests {
             "hl.dsp.window.fullscreen({ mode = \"fullscreen\", action = \"toggle\", window = \"address:0xab\" })"
         );
         assert_eq!(toggle_pinned("ab").classic, "pin address:0xab");
+    }
+
+    #[test]
+    fn default_headerbars_unless_a_rule_decides() {
+        let win = |address: &str, app_id: &str| nyx_shell_proto::WindowState { address: address.into(), app_id: app_id.into(), ..Default::default() };
+        let mut state = DesktopState { windows: vec![win("a1", "org.qt.app"), win("b2", "foot"), win("c3", "mpv")], ..Default::default() };
+        let ctx = Context { default_headerbars: ["a1".to_string(), "b2".to_string()].into(), ..Default::default() };
+        annotate(&mut state, &WindowControlsConfig::default(), &ctx);
+        assert_eq!(state.windows[0].controls, Some(Controls::CustomHeaderbar));
+        assert_eq!(state.windows[1].controls, Some(Controls::ChromelessFloating));
+        assert_eq!(state.windows[2].controls, None);
     }
 }

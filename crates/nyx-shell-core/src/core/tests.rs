@@ -205,7 +205,7 @@ fn windows_carry_their_controls_and_actions() {
     h.connect(1, Identity::trusted("nyx-shellctl"), 64);
     let mut d = crate::state::tests::desktop();
     d.windows[1].floating = true;
-    h.desktop_in(d.clone(), crate::window::Context { minimize_workspaces: [2].into() });
+    h.desktop_in(d.clone(), crate::window::Context { minimize_workspaces: [2].into(), ..Default::default() });
     let sub = h.call(1, Op::SubscribeDesktopChanges).unwrap();
     let state: DesktopState = serde_json::from_value(sub["state"].clone()).unwrap();
     let kitty = state.window("b2").unwrap();

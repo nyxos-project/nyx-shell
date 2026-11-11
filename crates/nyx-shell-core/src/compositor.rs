@@ -67,15 +67,34 @@ pub struct Update {
 }
 
 /// Start the watcher; `send` runs on its thread for every update. Omarchy's workspace
-/// modes are read there too, as reading them may ask Hyprland.
+/// modes and nyx-decor's headerbars are read there too, as reading them asks Hyprland.
 pub fn watch(send: impl Fn(Update) + Send + 'static) -> nyx_desktop::watch::Watcher {
     let omarchy_minimize = crate::actions::which(crate::window::OMARCHY_MINIMIZE).is_some();
     nyx_desktop::watch::watch(move |u| {
         let context = crate::window::Context {
             minimize_workspaces: if omarchy_minimize { floating_workspaces(&u.desktop) } else { Default::default() },
+            default_headerbars: if u.desktop.connected { default_headerbars() } else { Default::default() },
         };
         send(Update { desktop: u.desktop, context })
     })
+}
+
+/// The windows nyx-decor gave a headerbar no rule asked for (`hyprctl -j nyxdecor`).
+/// Without the plugin Hyprland doesn't know the request: none.
+fn default_headerbars() -> std::collections::BTreeSet<String> {
+    #[derive(serde::Deserialize)]
+    struct Reply {
+        default_headerbars: Vec<String>,
+    }
+    Instance::find()
+        .and_then(|i| i.json::<Reply>("nyxdecor"))
+        .map(|r| parse_addresses(r.default_headerbars))
+        .unwrap_or_default()
+}
+
+/// Hyprland's `0x…` addresses as Shell Core writes them: lowercase hex without `0x`.
+fn parse_addresses(list: Vec<String>) -> std::collections::BTreeSet<String> {
+    list.iter().map(|a| a.trim_start_matches("0x").to_ascii_lowercase()).collect()
 }
 
 /// Omarchy's floating workspaces, where its minimize works.
@@ -166,6 +185,12 @@ pub fn window_dispatch(a: &WindowAction, desktop: &DesktopState) -> Result<Windo
 mod tests {
     use super::*;
     use nyx_shell_proto::{MonitorState, WindowState};
+
+    #[test]
+    fn plugin_addresses() {
+        let got = parse_addresses(vec!["0x5586DC248020".into(), "618bd598c160".into()]);
+        assert_eq!(got, ["5586dc248020".to_string(), "618bd598c160".to_string()].into());
+    }
 
     fn desktop() -> DesktopState {
         DesktopState {
