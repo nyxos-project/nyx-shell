@@ -110,6 +110,8 @@ pub struct Core {
     window_context: window::Context,
     /// Whether each panel's layer surface was mapped at the last update.
     panel_layers: BTreeMap<&'static str, bool>,
+    /// Client panels said to be open (`Panel1.Opened`): said again only after they hide.
+    announced: BTreeSet<String>,
     last_event: Option<Instant>,
     locked: bool,
     clients: BTreeMap<ClientId, Client>,
@@ -172,6 +174,7 @@ impl Core {
             raw: Arc::default(),
             window_context: window::Context::default(),
             panel_layers: BTreeMap::new(),
+            announced: BTreeSet::new(),
             last_event: None,
             locked: false,
             clients: BTreeMap::new(),
@@ -497,14 +500,22 @@ impl Core {
     }
 
     fn apply_overlay_changes(&mut self, before: bool, changes: Vec<Change>) {
+        // Only a panel that has just appeared closes the others; a change to one that
+        // was already showing (a move, a refresh) closed the Control Center under it.
         let mut announce = Vec::new();
         for c in &changes {
-            if let Change::Changed(s) = c
-                && s.visible
-                && s.owner.starts_with("client:")
-                && s.group.as_deref() == Some(PANELS)
-            {
-                announce.push(s.id.clone());
+            match c {
+                Change::Changed(s) if s.visible && s.owner.starts_with("client:") && s.group.as_deref() == Some(PANELS) => {
+                    if self.announced.insert(s.id.clone()) {
+                        announce.push(s.id.clone());
+                    }
+                }
+                Change::Changed(s) => {
+                    self.announced.remove(&s.id);
+                }
+                Change::Removed(id) => {
+                    self.announced.remove(id);
+                }
             }
         }
         self.after_overlays(before, &announce);
