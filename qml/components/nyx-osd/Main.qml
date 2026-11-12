@@ -143,6 +143,10 @@ Scope {
             color: Style.popover
             border.width: 1
             border.color: Style.alpha(Style.border, 0.55)
+            // A screen reader announces the change as it shows.
+            Accessible.role: Accessible.AlertMessage
+            Accessible.name: ({ volume: "Volume", mic: "Microphone", brightness: "Brightness", keyboard: "Keyboard light" })[osd.kind] || ""
+            Accessible.description: osd.muted && osd.kind !== "keyboard" ? "muted" : osd.text
             opacity: surface.shown ? 1 : 0
             Behavior on opacity {
                 NumberAnimation {
