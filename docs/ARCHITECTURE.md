@@ -259,9 +259,14 @@ must be isolated from the others' crashes (Assistant HUD, anything authenticatio
 | Malformed configuration | Defaults for the broken section, error listed in diagnostics |
 | Theme update during an overlay | A theme event; surfaces restyle in place |
 
-systemd restarts with `Restart=on-failure`, `RestartSec=1`, and `StartLimitBurst=5` in
+systemd restarts with `Restart=on-failure`, `RestartSec=1`, and `StartLimitBurst=10` in
 `StartLimitIntervalSec=60`, so a crash loop stops instead of spinning. The compositor is
 never restarted because of a shell failure.
+
+Every surface in `nyx-shell-qs` (Bar, Dock, the Control Center's panel, OSD, window
+menu, Glimpse's panel) goes when it stops, so on NyxOS both units have
+`OnFailure=nyx-shell-failed.service`: a critical notification (drawn by the Notification
+Center, outside this runtime) says the shell stopped and offers to restart it.
 
 ## Platforms
 

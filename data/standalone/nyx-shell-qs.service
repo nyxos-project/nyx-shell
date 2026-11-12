@@ -4,7 +4,7 @@ Documentation=https://github.com/nyxos-project/nyx-shell
 After=graphical-session.target
 PartOf=graphical-session.target
 StartLimitIntervalSec=60
-StartLimitBurst=5
+StartLimitBurst=10
 # Quickshell aborts without a display.
 ConditionEnvironment=WAYLAND_DISPLAY
 
