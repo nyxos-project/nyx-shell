@@ -79,13 +79,32 @@ Singleton {
     function overlay(id) {
         return root.overlays[id] || null;
     }
+    // While Shell Core is away, transient overlays still open and close (Glimpse,
+    // panels), decided here; its next snapshot replaces whatever this decided.
+    function _offline() {
+        return !root._local && !root.connected;
+    }
+    function _setLocal(id, visible, monitor) {
+        const cur = root.overlays[id] || { id: id, owner: "client:" + root.clientName, category: "transient", revision: 0 };
+        const o = Object.assign({}, root.overlays);
+        o[id] = Object.assign({}, cur, { requested: visible, visible: visible, monitor: visible ? (monitor || null) : cur.monitor, reason: null });
+        root.overlays = o;
+    }
     function showOverlay(id, monitor) {
+        if (_offline())
+            return _setLocal(id, true, monitor);
         request("ShowOverlay", monitor ? { id: id, monitor: monitor } : { id: id }, _merge);
     }
     function hideOverlay(id) {
+        if (_offline())
+            return _setLocal(id, false);
         request("HideOverlay", { id: id }, _merge);
     }
     function toggleOverlay(id) {
+        if (_offline()) {
+            const cur = root.overlays[id];
+            return _setLocal(id, !(cur && cur.visible));
+        }
         request("ToggleOverlay", { id: id }, _merge);
     }
     // Pin a persistent overlay at `size` ([w, h]): Shell Core shows it and places it.
@@ -279,6 +298,14 @@ Singleton {
         root.ready = false;
         root._seq = 0;
         root._since = {};
+        // A transient overlay open now would stay up holding the keyboard with no one to
+        // close it; persistent ones (the bar, the dock) stay as they are.
+        const o = {};
+        for (const id in root.overlays) {
+            const s = root.overlays[id];
+            o[id] = s.category === "transient" && s.visible ? Object.assign({}, s, { visible: false, requested: false }) : s;
+        }
+        root.overlays = o;
     }
 
     // Called by Standalone.qml.
