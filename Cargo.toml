@@ -23,10 +23,10 @@ libc = "0.2"
 tempfile = "3"
 # Shared Nyx crates, pinned like every Nyx repository. nyx-desktop without its `glib`
 # feature is plain std: the model, watcher and dispatchers.
-nyx-desktop = { git = "https://github.com/design-nexus/nyx-core.git", rev = "51d82b7be343416339f87b10d6bb633a437b7c35", default-features = false }
-nyx-peer = { git = "https://github.com/design-nexus/nyx-core.git", rev = "a93881d696abb6e9176675d5c84374b9bd124167" }
-nyx-config = { git = "https://github.com/nyxos-project/nyx-system.git", rev = "87461e53c2fc5fb5e045204e2a492c32c86a3f26" }
-nyx-theme = { git = "https://github.com/design-nexus/nyx-design.git", rev = "40db521bab468d54f18f65c6aabd7fc8533d6a4d" }
+nyx-desktop = { git = "https://github.com/design-nexus/nyx-core.git", rev = "32f0c5e154fc44c763b8ecd80d35a3b298723afa", default-features = false }
+nyx-peer = { git = "https://github.com/design-nexus/nyx-core.git", rev = "32f0c5e154fc44c763b8ecd80d35a3b298723afa" }
+nyx-config = { git = "https://github.com/nyxos-project/nyx-system.git", rev = "f68ecc891cd0d5a36b6ed29e93ed5ffc52e77acc" }
+nyx-theme = { git = "https://github.com/design-nexus/nyx-design.git", rev = "4f8e16d6ae3dbc2a14091271e3b6bb29902c0df4" }
 
 [profile.release]
 lto = "thin"
