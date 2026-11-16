@@ -1146,7 +1146,7 @@ dependencies = [
 [[package]]
 name = "nyx-theme"
 version = "0.1.0"
-source = "git+https://github.com/design-nexus/nyx-design.git?rev=6c139d893bdb01f3bd87801e08361b3b3c36591e#6c139d893bdb01f3bd87801e08361b3b3c36591e"
+source = "git+https://github.com/design-nexus/nyx-design.git?rev=ea8839d237a23ec83887429475f0780c06a36826#ea8839d237a23ec83887429475f0780c06a36826"
 dependencies = [
  "gtk4",
  "nyx-core",
@@ -1157,7 +1157,7 @@ dependencies = [
 [[package]]
 name = "nyx-theme-core"
 version = "0.2.0"
-source = "git+https://github.com/design-nexus/nyx-design.git?rev=6c139d893bdb01f3bd87801e08361b3b3c36591e#6c139d893bdb01f3bd87801e08361b3b3c36591e"
+source = "git+https://github.com/design-nexus/nyx-design.git?rev=ea8839d237a23ec83887429475f0780c06a36826#ea8839d237a23ec83887429475f0780c06a36826"
 dependencies = [
  "nyx-config",
  "nyx-core",
