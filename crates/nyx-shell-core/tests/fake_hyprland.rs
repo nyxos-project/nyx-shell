@@ -53,7 +53,7 @@ fn end_to_end() {
         snapshot_file: tmp.path().join("run/nyx/theme/system.json"),
     };
     let me = std::env::current_exe().unwrap();
-    let trust = Trust { own_dir: PathBuf::from("/nonexistent"), trusted_dirs: vec![], ui_runtimes: vec![me] };
+    let trust = Trust { own_dir: PathBuf::from("/nonexistent"), trusted_dirs: vec![], trusted_file: None, ui_runtimes: vec![me] };
     let socket = runtime.join("nyx-shell/core.sock");
     let options = |socket: PathBuf| ServerOptions {
         socket,

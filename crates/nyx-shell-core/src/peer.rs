@@ -29,6 +29,10 @@ impl Identity {
 pub struct Trust {
     pub own_dir: PathBuf,
     pub trusted_dirs: Vec<PathBuf>,
+    /// Read the trusted folders from this file on every classification instead of
+    /// `trusted_dirs`: an update rewrites it with the new store paths while Shell Core,
+    /// which a switch doesn't restart, keeps running.
+    pub trusted_file: Option<PathBuf>,
     pub ui_runtimes: Vec<PathBuf>,
 }
 
@@ -37,7 +41,8 @@ impl Trust {
         let own_dir = std::env::current_exe().ok().and_then(|p| p.parent().map(Path::to_path_buf)).unwrap_or_default();
         Trust {
             own_dir,
-            trusted_dirs: nyx_peer::trusted_dirs(Path::new(nyx_peer::TRUSTED_DIRS_FILE)),
+            trusted_dirs: Vec::new(),
+            trusted_file: Some(nyx_peer::TRUSTED_DIRS_FILE.into()),
             ui_runtimes: ui_runtimes.iter().map(PathBuf::from).collect(),
         }
     }
@@ -50,7 +55,15 @@ impl Trust {
             return Identity { program: "unknown".into(), pid, capabilities: read_only() };
         };
         let name = exe.file_name().and_then(|n| n.to_str()).unwrap_or("unknown").to_string();
-        let trusted = nyx_peer::program_in(exe, &self.own_dir, &self.trusted_dirs);
+        let fresh;
+        let dirs = match &self.trusted_file {
+            Some(file) => {
+                fresh = nyx_peer::trusted_dirs(file);
+                &fresh
+            }
+            None => &self.trusted_dirs,
+        };
+        let trusted = nyx_peer::program_in(exe, &self.own_dir, dirs);
         let (program, capabilities) = match trusted.as_deref() {
             Some("nyx-shellctl") => ("nyx-shellctl".to_string(), Capability::ALL.into_iter().collect()),
             Some("nyx-settings") => ("nyx-settings".to_string(), [DesktopRead, ConfigWrite, WindowOwn].into_iter().collect()),
@@ -80,6 +93,7 @@ mod tests {
         Trust {
             own_dir: "/opt/nyx-shell/bin".into(),
             trusted_dirs: vec!["/nix/store/abc-nyx-settings/bin".into(), "/nix/store/def-quickshell/bin".into()],
+            trusted_file: None,
             ui_runtimes: vec!["/usr/bin/quickshell".into()],
         }
     }

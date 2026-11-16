@@ -49,7 +49,7 @@ fn rapid_workspace_switches() {
         config: ConfigStore { layers: nyx_config::Layers { defaults: root.join("d"), system: root.join("s"), user: root.join("u") } },
         theme: ThemeSource { suite_file: root.join("u/theme.toml"), themes_dir: root.join("u/themes"), omarchy_dir: root.join("o"), snapshot_file: root.join("r/system.json") },
         compositor: Arc::new(nyx_shell_core::compositor::Hyprland),
-        trust: Some(Trust { own_dir: PathBuf::from("/nonexistent"), trusted_dirs: vec![], ui_runtimes: vec![] }),
+        trust: Some(Trust { own_dir: PathBuf::from("/nonexistent"), trusted_dirs: vec![], trusted_file: None, ui_runtimes: vec![] }),
     };
     let (stop_tx, stop_rx) = tokio::sync::oneshot::channel::<()>();
     let (started_tx, started_rx) = tokio::sync::oneshot::channel();
