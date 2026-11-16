@@ -10,7 +10,9 @@ StartLimitBurst=10
 Type=notify
 NotifyAccess=main
 ExecStart=%h/.local/bin/nyx-shell-core
-Restart=on-failure
+# A clean exit (a quit request, the compositor's socket closing) brings it back too;
+# the start limit still ends a crash loop and OnFailure reports it.
+Restart=always
 RestartSec=1
 
 [Install]

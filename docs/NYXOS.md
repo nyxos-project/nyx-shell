@@ -10,7 +10,7 @@ until Handoff 03 moves components onto it.
 | Path | What |
 | --- | --- |
 | `bin/nyx-shell-core`, `bin/nyx-shellctl` | The daemon and its command line |
-| `lib/systemd/user/nyx-shell-core.service` | `Type=notify`, `Restart=on-failure`, at most 5 starts a minute |
+| `lib/systemd/user/nyx-shell-core.service` | `Type=notify`, `Restart=always`, at most 10 starts a minute |
 | `lib/systemd/user/nyx-shell-qs.service` | The Quickshell runtime (`Wants=`/`After=` the core, not bound to it) |
 | `share/nyx-shell/qml` | The `Nyx.Shell` module, `shell.qml`, the examples |
 | `share/nyx-shell/shell.toml` | The NyxOS defaults, with Quickshell's store path as the trusted UI runtime |

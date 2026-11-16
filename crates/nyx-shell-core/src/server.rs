@@ -272,7 +272,15 @@ async fn accept(listener: UnixListener, tx: mpsc::UnboundedSender<Msg>, trust: t
     let uid = unsafe { libc::getuid() };
     let mut next: ClientId = 0;
     loop {
-        let Ok((stream, _)) = listener.accept().await else { continue };
+        let stream = match listener.accept().await {
+            Ok((stream, _)) => stream,
+            // An error that lasts (no file descriptors left) would otherwise spin a core.
+            Err(e) => {
+                tracing::warn!(error = %e, "accepting a connection failed");
+                tokio::time::sleep(Duration::from_millis(100)).await;
+                continue;
+            }
+        };
         let Ok(cred) = stream.peer_cred() else { continue };
         if cred.uid() != uid {
             tracing::warn!(uid = cred.uid(), "refused a connection from another user");

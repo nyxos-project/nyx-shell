@@ -18,7 +18,9 @@ Environment=QS_DISABLE_CRASH_HANDLER=1
 # Hyprland closes its request socket after every answer; Quickshell would log each one.
 Environment=QT_LOGGING_RULES=quickshell.io.socket.warning=false;qt.svg.warning=false
 Environment=NYX_SHELL_MODE=core
-Restart=on-failure
+# A clean exit (a quit request, the compositor's socket closing) brings it back too;
+# the start limit still ends a crash loop and OnFailure reports it.
+Restart=always
 RestartSec=2
 
 [Install]
