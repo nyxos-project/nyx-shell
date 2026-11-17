@@ -226,8 +226,9 @@ the generation moves only when the inputs' contents change.
 | Process | Runs | Why separate |
 | --- | --- | --- |
 | `nyx-shell-core` | the coordinator | Must survive any UI crash; tiny |
-| `nyx-shell-qs` | ordinary Quickshell surfaces (Handoff 03 moves them here) | One QML engine for closely related surfaces; a crash takes all of them, and only them |
-| GTK panels, dock, bar, widgets | as today | Unchanged until Handoff 03 |
+| `nyx-shell-qs` | the bar, dock, Control Center, Glimpse's panel, OSD and Desktop Widgets | One QML engine for closely related surfaces; a crash takes all of them, and only them |
+| Their backends (`nyx-bar-backend`, `nyx-dock-backend`, …) | each surface's model and plugins | A surface's work and its plugins outside the shared QML engine |
+| Switcher, Notification Center | GTK 4, their own services | Not moved yet |
 | `nyx-notifyd`, clipboard, Glimpse daemons, Assistant | as today | Own lifecycles and backends |
 | Nyx Locker, nyx-prompt, nyx-authd, keyd | as today | Security boundary; never inside an ordinary shell runtime |
 

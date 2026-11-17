@@ -1,7 +1,24 @@
 # Nyx Shell on NyxOS
 
-How Shell Core is packaged, switched on and checked on NyxOS. It is off by default
-until Handoff 03 moves components onto it.
+How Shell Core is packaged, started and checked on NyxOS. NyxOS turns it on
+(`nyx.shell.enable`, `nyxos/modules/nixos/apps.nix`).
+
+## NyxOS today
+
+What starts with the session (`graphical-session.target`), from each package's
+`passthru.autostart` in nyx-packages:
+
+| Unit | Package | What it is |
+| --- | --- | --- |
+| `nyx-shell-core` | nyx-shell | Shell Core: the desktop model, overlay policy, actions |
+| `nyx-shell-qs` | nyx-shell | The Quickshell runtime: draws the bar, dock, Control Center, Glimpse's panel, the OSD and (when turned on) Desktop Widgets, from `share/nyx-shell/components` |
+| `nyx-bar-backend` | nyx-bar | The bar's plugins and model (its GTK bar stays installed, not started) |
+| `nyx-dock-backend` | nyx-dock | The dock's model (its GTK dock stays installed, not started) |
+| `nyx-control-center-backend` | nyx-control-center | Network, Bluetooth, sound and brightness for the Control Center and the OSD (its GTK panel stays installed, not started) |
+| `nyx-glimpse-backend` | nyx-glimpse | Glimpse's search and plugins |
+| `nyx-desktop-widgets-backend` | nyx-desktop-widgets | Only with `nyx.desktop-widgets.enable` |
+| `nyx-switcher` | nyx-switcher | The switcher and window overview, still GTK 4 |
+| `nyx-notifyd`, `nyx-notification-center` | nyx-notification-center | Pop-ups and the Notification Center panel, still GTK 4; they join the overlay policy over `Panel1` |
 
 ## What ships
 
@@ -15,9 +32,7 @@ until Handoff 03 moves components onto it.
 | `share/nyx-shell/qml` | The `Nyx.Shell` module, `shell.qml`, the examples |
 | `share/nyx-shell/shell.toml` | The NyxOS defaults, with Quickshell's store path as the trusted UI runtime |
 
-Only `nyx-shell-core` starts with the session (`passthru.autostart`). `nyx-shell-qs`
-is installed but not started: with no components in it, it would cost Quickshell's
-56 MiB for nothing ([PERFORMANCE.md](PERFORMANCE.md)).
+Both `nyx-shell-core` and `nyx-shell-qs` start with the session (`passthru.autostart`).
 
 ## Switching it on
 
@@ -42,8 +57,8 @@ The package's `bin` joins `/etc/nyx/trusted-bin` like every enabled Nyx app, whi
 how Shell Core recognizes `nyx-shellctl` (all capabilities) and Nyx Settings
 (`config.write`).
 
-A host turns it on with `nyx.shell.enable = true;`. NyxOS's `modules/nixos/apps.nix`
-leaves it off (`lib.mkDefault false`) until Handoff 03.
+A host turns it on with `nyx.shell.enable = true;`; NyxOS's `modules/nixos/apps.nix`
+does.
 
 ## Hyprland configuration
 
@@ -69,10 +84,13 @@ key moves into `[shortcuts]` and out of `hyprland.nix` in the same change.
 ## Session order
 
 1. greetd → uwsm → Hyprland; `graphical-session.target`.
-2. `nyx-shell-core.service`: lock, socket, watcher, settings, theme; `READY=1` after
-   the first compositor snapshot (or 2 s).
-3. `nyx-shell-qs.service` when enabled: Quickshell connects, components register.
-4. The GTK panels start as before, independently; Shell Core follows their bus names.
+2. Everything in the table above starts in parallel. `nyx-shell-core.service` (lock,
+   socket, watcher, settings, theme) reports `READY=1` after the first compositor
+   snapshot (or 2 s).
+3. In `nyx-shell-qs`, each component's QML connects to Shell Core and to its own
+   backend, retrying with backoff until they're up, and registers.
+4. The GTK panels (switcher, Notification Center) start independently; Shell Core
+   follows their bus names.
 
 Logout stops the target; Shell Core tells clients `Shutdown` and removes its socket.
 
@@ -95,6 +113,9 @@ nyx-shellctl invoke shell.osd-sample.show '{"level": 40}'
 ```
 
 ## Validation
+
+A record of the first runs (2026-11-07), when Shell Core was still off by default on
+NyxOS and no component ran in `nyx-shell-qs` yet.
 
 Done on the laptop (Omarchy, read-only, a headless output; see PERFORMANCE.md):
 startup and shutdown, live state against Hyprland, hotplug, the `Panel1` bus names,

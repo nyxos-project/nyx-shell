@@ -7,16 +7,19 @@ services measured from `/proc`.
 
 Scope of this pass: stages A to G. Glimpse and the Assistant Aura (stage H) wait for
 Handoff 05; the lock screen and greeter feasibility (stage I) and NyxOS integration and
-removal of the GTK code (stage J) come later. Nyx Bar stays GTK.
+removal of the GTK code (stage J) come later. (Written 2026-11-08; the bar and Glimpse's
+panel have since moved to QML on NyxOS too: the table below is current.)
 
 ## Where each component runs
 
 | Component | Laptop (Omarchy) | NyxOS |
 | --- | --- | --- |
-| Dock | QML, installed (GTK dock off) | GTK until its package moves (open item) |
+| Dock | QML, installed (GTK dock off) | QML (nyx-packages) |
 | Control Center | QML, installed (GTK panel off) | QML (nyx-packages) |
-| Notification Center (panel and pop-ups) | QML, installed; `nyx-notifyd` unchanged | GTK until its package moves (open item) |
-| Switcher (Quick Switch, Overview) | QML, installed (GTK switcher off) | GTK until its package moves (open item) |
+| Notification Center (panel and pop-ups) | QML, installed; `nyx-notifyd` unchanged | GTK (its package doesn't install the QML yet) |
+| Switcher (Quick Switch, Overview) | QML, installed (GTK switcher off) | GTK (its package doesn't install the QML yet) |
+| Bar | GTK | QML (nyx-packages) |
+| Glimpse's panel | GTK | QML (nyx-packages) |
 | Desktop Widgets | not installed | QML (nyx-packages) |
 | OSDs | not installed (Omarchy's own) | QML, new (nyx-packages) |
 | Nyx Shell Core | not installed | `nyx-shell-core` |
